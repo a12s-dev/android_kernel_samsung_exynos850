@@ -1,0 +1,141 @@
+name: Build SukiSU Kernel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ARCH: arm64
+  CLANG_VER: clang-r383902
+  CLANG_REF: refs/heads/android-exynos-r11-4.19-android15-qpr2
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        hook: [manual, kprobes]
+    steps:
+      - name: Checkout suki-build
+        uses: actions/checkout@v4
+        with:
+          ref: suki-build
+          fetch-depth: 1
+
+      - name: Cache toolchain
+        id: cache-tc
+        uses: actions/cache@v4
+        with:
+          path: ~/tc
+          key: tc-${{ env.CLANG_VER }}-gcc49-v1
+
+      - name: Download toolchains
+        if: steps.cache-tc.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/tc"
+          cd "$HOME/tc"
+          curl -fL --retry 3 -o clang.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/${CLANG_REF}/${CLANG_VER}.tar.gz"
+          mkdir -p clang && tar -xzf clang.tar.gz -C clang
+          rm -f clang.tar.gz
+          curl -fL --retry 3 -o gcc64.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android-msm-barbet-4.19-android12L.tar.gz"
+          mkdir -p gcc64 && tar -xzf gcc64.tar.gz -C gcc64
+          rm -f gcc64.tar.gz
+          curl -fL --retry 3 -o gcc32.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/heads/android-msm-barbet-4.19-android12L.tar.gz"
+          mkdir -p gcc32 && tar -xzf gcc32.tar.gz -C gcc32
+          rm -f gcc32.tar.gz
+          ls gcc64/bin | head
+          ls gcc32/bin | head
+          du -sh "$HOME/tc"
+
+      - name: Install missing packages only
+        run: |
+          set -euo pipefail
+          for p in ccache bc bison flex libssl-dev libelf-dev rsync; do
+            if ! dpkg -s "$p" >/dev/null 2>&1; then
+              sudo apt-get update -qq
+              sudo apt-get install -y "$p"
+            else
+              echo "$p present"
+            fi
+          done
+          command -v ccache; ccache --version | head -1
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref_name }}-
+
+      - name: Setup SukiSU (${{ matrix.hook }})
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.hook }}" = "kprobes" ]; then
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+          else
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+            python3 scripts/apply_manual_hooks.py
+          fi
+          git status --short | head
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          R="${{ github.run_number }}"
+          if [ "${{ matrix.hook }}" = "kprobes" ]; then
+            LV="-suki-r${R}"
+            KPROBE_OPTS="-e KPROBES -e KPROBE_EVENTS -e KRETPROBES"
+          else
+            LV="-suki-r${R}-manual"
+            KPROBE_OPTS="-d KPROBES -d KPROBE_EVENTS -d KRETPROBES"
+          fi
+          echo "LOCALVERSION=$LV"
+          make ARCH=arm64 a12s_defconfig
+          ./scripts/config --file .config \
+            -e KSU -e KPM \
+            -e KALLSYMS -e KALLSYMS_ALL -e OVERLAY_FS -e EXT4_FS \
+            -d DEBUG_INFO -d DEBUG_INFO_DWARF4 -d DEBUG_INFO_DWARF5 \
+            $KPROBE_OPTS \
+            --set-str LOCALVERSION "$LV"
+          make ARCH=arm64 olddefconfig
+          echo "=== key configs ==="
+          grep -E 'CONFIG_KSU|CONFIG_KPM|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_KALLSYMS|CONFIG_OVERLAY_FS|CONFIG_LOCALVERSION|CONFIG_PSTORE|CONFIG_DEBUG_INFO=' .config | head -40
+
+      - name: Build Image
+        run: |
+          set -euo pipefail
+          export CCACHE_DIR="$HOME/.ccache"
+          export CCACHE_MAXSIZE=2G
+          export PATH="$HOME/tc/clang/bin:$HOME/tc/gcc64/bin:$HOME/tc/gcc32/bin:$PATH"
+          ccache -z
+          START=$(date +%s)
+          make ARCH=arm64 \
+            CC="ccache clang" \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_COMPAT=arm-linux-androideabi- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            LD=ld.lld NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
+            -j"$(nproc)" Image 2>&1 | tee build.log
+          END=$(date +%s)
+          echo "BUILD_SECONDS=$((END-START))" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Image: $(ls -la arch/arm64/boot/Image)"
+          ccache -s | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a12s-${{ matrix.hook }}
+          path: |
+            arch/arm64/boot/Image
+            .config
+            build.log
+          if-no-files-found: error
