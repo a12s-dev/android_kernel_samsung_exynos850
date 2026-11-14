@@ -205,6 +205,110 @@ if kbuild.exists():
 else:
     print("SKIP: Kbuild not present (builtin uses unity Makefile)")
 
+# --- main file_wrapper.c: gate 5.1+/4.20+ fops helpers for 4.19 ---
+FW = "KernelSU/kernel/infra/file_wrapper.c"
+
+# iopoll: field + signature only exist 5.1+ (was bare #else assuming it exists)
+patch(
+    FW,
+    """#else
+static int ksu_wrapper_iopoll(struct kiocb *kiocb, bool spin)
+{
+    struct ksu_file_wrapper *data = kiocb->ki_filp->private_data;
+    struct file *orig = data->orig;
+    kiocb->ki_filp = orig;
+    return orig->f_op->iopoll(kiocb, spin);
+}
+#endif""",
+    """#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)
+static int ksu_wrapper_iopoll(struct kiocb *kiocb, bool spin)
+{
+    struct ksu_file_wrapper *data = kiocb->ki_filp->private_data;
+    struct file *orig = data->orig;
+    kiocb->ki_filp = orig;
+    return orig->f_op->iopoll(kiocb, spin);
+}
+#endif""",
+    "iopoll wrapper >=5.1 only",
+)
+
+patch(
+    FW,
+    "    p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;",
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)\n"
+    "    p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;\n"
+    "#endif",
+    "iopoll assign >=5.1",
+)
+
+# remap_file_range / REMAP_FILE_DEDUP: 4.20+ (4.19 has dedupe_file_range instead)
+patch(
+    FW,
+    """static loff_t ksu_wrapper_remap_file_range(struct file *file_in, loff_t pos_in, struct file *file_out, loff_t pos_out,
+                                           loff_t len, unsigned int remap_flags)
+{""",
+    """#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)
+static loff_t ksu_wrapper_remap_file_range(struct file *file_in, loff_t pos_in, struct file *file_out, loff_t pos_out,
+                                           loff_t len, unsigned int remap_flags)
+{""",
+    "remap wrapper open >=4.20",
+)
+
+# close the remap wrapper (#endif after its closing brace)
+patch(
+    FW,
+    """        return orig->f_op->remap_file_range(orig, pos_in, file_out, pos_out, len, remap_flags);
+    }
+}""",
+    """        return orig->f_op->remap_file_range(orig, pos_in, file_out, pos_out, len, remap_flags);
+    }
+}
+#endif""",
+    "remap wrapper close >=4.20",
+)
+
+patch(
+    FW,
+    "    p->ops.remap_file_range = fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;",
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)\n"
+    "    p->ops.remap_file_range = fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;\n"
+    "#endif",
+    "remap assign >=4.20",
+)
+
+# <5.16 anon-inode path: security_inode_init_security_anon is 5.1+ and the
+# borrowed anon_inode_mnt is never initialized here (always -ENODEV).
+# Match builtin: plain anon_inode_getfile (drops unused 5th arg).
+ANON_OLD = """#else
+// There is no anon_inode_create_getfile before 5.16, but it's not difficult to implement it.
+// https://cs.android.com/android/kernel/superproject/+/common-android12-5.10:common/fs/anon_inodes.c;l=58-125;drc=0d34ce8aa78e38affbb501690bcabec4df88620e
+
+// Borrow kernel's anon_inode_mnt, so that we don't need to mount one by ourselves.
+static struct vfsmount *anon_inode_mnt __read_mostly;
+"""
+# Replace from #else through the end of ksu_anon_inode_create_getfile_compat fn
+p_fw = Path(FW)
+if p_fw.exists():
+    s = p_fw.read_text()
+    if "define ksu_anon_inode_create_getfile_compat(a, b, c, d, e) anon_inode_getfile" in s:
+        print(f"SKIP: {FW} anon <5.16 path already simplified")
+    elif ANON_OLD in s:
+        start = s.index(ANON_OLD)
+        end_marker = "\n#endif\n\nint ksu_install_file_wrapper"
+        end = s.index(end_marker, start)
+        new_block = (
+            "#else\n"
+            "#define ksu_anon_inode_create_getfile_compat(a, b, c, d, e) anon_inode_getfile(a, b, c, d)\n"
+        )
+        s = s[:start] + new_block + s[end:]
+        p_fw.write_text(s)
+        print(f"OK: {FW} anon <5.16 path -> anon_inode_getfile macro")
+        fixes += 1
+    else:
+        print(f"WARN: {FW} anon <5.16 anchor not found")
+else:
+    print(f"SKIP: {FW} not present")
+
 if fixes == 0:
     print("NOTE: no fixes applied (anchors missing or already applied)")
 print(f"DONE ({fixes} fixes)")
