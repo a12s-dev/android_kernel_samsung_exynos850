@@ -97,7 +97,7 @@ jobs:
             KPROBE_OPTS="-e KPROBES -e KPROBE_EVENTS -e KRETPROBES"
           else
             LV="-suki-r${R}-manual"
-            KPROBE_OPTS="-d KPROBES -d KPROBE_EVENTS -d KRETPROBES"
+            KPROBE_OPTS="-d KPROBES -d KPROBE_EVENTS -d KRETPROBES -d KSU_SUSFS"
           fi
           echo "LOCALVERSION=$LV"
           make ARCH=arm64 a12s_defconfig
