@@ -85,6 +85,7 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
             python3 scripts/apply_manual_hooks.py
           fi
+          python3 scripts/sukisu_compat.py
           git status --short | head
 
       - name: Configure
