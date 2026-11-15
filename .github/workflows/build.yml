@@ -26,10 +26,10 @@ jobs:
         # has no CONFIG_KSU_SUSFS Kconfig)
         hook: [manual]
     steps:
-      - name: Checkout suki-build
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: suki-build
+          ref: ${{ github.ref_name }}
           fetch-depth: 1
 
       - name: Cache toolchain
