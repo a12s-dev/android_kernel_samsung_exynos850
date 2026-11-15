@@ -202,6 +202,19 @@ if kbuild.exists():
         fixes += 1
     else:
         print("SKIP: Kbuild already force-includes ksu_419_compat.h")
+    s = kbuild.read_text()
+    if "KSU_HAS_SECCOMP_ACTION_CACHE" not in s:
+        s += (
+            "\n# seccomp action_cache is Android/GKI-only, absent on 4.19\n"
+            "ifeq ($(shell grep -q 'action_cache' $(srctree)/kernel/seccomp.c; echo $$?),0)\n"
+            "ccflags-y += -DKSU_HAS_SECCOMP_ACTION_CACHE\n"
+            "endif\n"
+        )
+        kbuild.write_text(s)
+        print("OK: Kbuild feature-detects seccomp action_cache")
+        fixes += 1
+    else:
+        print("SKIP: Kbuild already feature-detects seccomp action_cache")
 else:
     print("SKIP: Kbuild not present (builtin uses unity Makefile)")
 
@@ -333,6 +346,34 @@ patch(
 }""",
     "init: drop anon_inode_mnt setup",
 )
+
+# --- main: seccomp action_cache (SECCOMP_ARCH_NATIVE_NR) is Android/GKI-only;
+# on 4.19 the kernel struct has no cache -> no-op stubs, no struct redef ---
+SC = "KernelSU/kernel/infra/seccomp_cache.c"
+sc_path = Path(SC)
+if sc_path.exists():
+    s = sc_path.read_text()
+    if "KSU_HAS_SECCOMP_ACTION_CACHE" in s:
+        print(f"SKIP: {SC} already gated")
+    elif "struct action_cache {" in s:
+        idx = s.index("struct action_cache {")
+        head, body = s[:idx], s[idx:]
+        sc_path.write_text(
+            head
+            + "#ifndef KSU_HAS_SECCOMP_ACTION_CACHE\n"
+            + "/* No action_cache in this kernel (4.19): stubs, full filter still runs. */\n"
+            + "void ksu_seccomp_clear_cache(struct seccomp_filter *filter, int nr) { (void)filter; (void)nr; }\n"
+            + "void ksu_seccomp_allow_cache(struct seccomp_filter *filter, int nr) { (void)filter; (void)nr; }\n"
+            + "#else\n"
+            + body
+            + "\n#endif\n"
+        )
+        print(f"OK: {SC} gated on KSU_HAS_SECCOMP_ACTION_CACHE")
+        fixes += 1
+    else:
+        print(f"WARN: {SC} action_cache anchor not found")
+else:
+    print(f"SKIP: {SC} not present")
 
 if fixes == 0:
     print("NOTE: no fixes applied (anchors missing or already applied)")
