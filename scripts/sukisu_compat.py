@@ -884,6 +884,27 @@ patch(
     "include sched/signal.h (task_pgrp/task_session)",
 )
 
+# --- weak path_mount/path_umount fallbacks (4.19 lacks both symbols) ---
+kc_src = Path("scripts/reference/kernel_compat.c")
+kc_dst = Path("KernelSU/kernel/kernel_compat.c")
+if kc_src.exists() and not kc_dst.exists():
+    kc_dst.write_text(kc_src.read_text())
+    print("OK: wrote KernelSU/kernel/kernel_compat.c (weak path_mount/path_umount)")
+    fixes += 1
+elif kc_dst.exists():
+    print("SKIP: kernel_compat.c already present")
+else:
+    print("SKIP: scripts/reference/kernel_compat.c missing")
+
+patch(
+    "KernelSU/kernel/Kbuild",
+    "kernelsu-objs += feature/kernel_umount.o",
+    "kernelsu-objs += feature/kernel_umount.o\n"
+    "# weak path_mount/path_umount for <5.9 (builtin kernel_compat.c)\n"
+    "kernelsu-objs += kernel_compat.o",
+    "Kbuild links kernel_compat.o",
+)
+
 if fixes == 0:
     print("NOTE: no fixes applied (anchors missing or already applied)")
 print(f"DONE ({fixes} fixes)")
