@@ -88,10 +88,16 @@ jobs:
           if [ "${{ matrix.hook }}" = "kprobes" ]; then
             curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
           else
+            # kernel-side manual hooks are already baked into this branch (C2);
+            # setup.sh only clones SukiSU and links drivers/kernelsu
             curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
-            python3 scripts/apply_manual_hooks.py
           fi
           python3 scripts/sukisu_compat.py
+          # verify SUSFS sources present after setup (silent-fallback trap)
+          test -f fs/susfs.c && test -f include/linux/susfs.h && test -f include/linux/susfs_def.h
+          git -C KernelSU rev-parse HEAD
+          git -C KernelSU branch --show-current || true
+          grep -q KSU_SUSFS KernelSU/kernel/Kconfig
           git status --short | head
 
       - name: Configure

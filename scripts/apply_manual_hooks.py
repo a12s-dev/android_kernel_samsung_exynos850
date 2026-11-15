@@ -11,6 +11,9 @@ def edit(path, old, new, count=1):
     if not p.exists():
         sys.exit(f"FAIL: missing {path}")
     s = p.read_text()
+    if new and new in s:
+        print(f"SKIP: {path} (already applied)")
+        return
     n = s.count(old)
     if n != count:
         sys.exit(f"FAIL: {path}: anchor found {n} times (expected {count}):\n{old!r}")
