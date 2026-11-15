@@ -345,6 +345,19 @@ if kbuild.exists():
         fixes += 1
     else:
         print("SKIP: Kbuild already feature-detects seccomp action_cache")
+    s = kbuild.read_text()
+    if "KSU_OPTIONAL_SECCOMP_FILTER_CNT" not in s:
+        s += (
+            "\n# struct seccomp.filter_count: present on GKI/newer, absent on 4.19\n"
+            "ifeq ($(shell grep -q 'filter_count' $(srctree)/include/linux/seccomp.h; echo $$?),0)\n"
+            "ccflags-y += -DKSU_OPTIONAL_SECCOMP_FILTER_CNT\n"
+            "endif\n"
+        )
+        kbuild.write_text(s)
+        print("OK: Kbuild feature-detects seccomp filter_count")
+        fixes += 1
+    else:
+        print("SKIP: Kbuild already feature-detects seccomp filter_count")
 else:
     print("SKIP: Kbuild not present (builtin uses unity Makefile)")
 
@@ -504,6 +517,98 @@ if sc_path.exists():
         print(f"WARN: {SC} action_cache anchor not found")
 else:
     print(f"SKIP: {SC} not present")
+
+# --- main: app_profile disable_seccomp - seccomp_filter_release is 5.9+,
+# struct seccomp.filter_count is optional (grep-detected); 4.19 uses
+# put_seccomp_filter() path like builtin ---
+AP = "KernelSU/kernel/policy/app_profile.c"
+ap_path = Path(AP)
+if ap_path.exists():
+    s = ap_path.read_text()
+    if "KSU_HAS_SECCOMP_FILTER_RELEASE" in s:
+        print(f"SKIP: {AP} already guarded")
+    else:
+        start_m = "void seccomp_filter_release(struct task_struct *tsk);"
+        end_m = "    seccomp_filter_release(fake);\n    kfree(fake);\n}"
+        if start_m in s and end_m in s:
+            start = s.index(start_m)
+            end = s.index(end_m, start) + len(end_m)
+            new_block = """#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+void seccomp_filter_release(struct task_struct *tsk);
+#define KSU_HAS_SECCOMP_FILTER_RELEASE
+#endif
+
+// https://cs.android.com/android/_/android/kernel/common/+/5346453405bf12d7ed6003f45dd47b71744fe1be
+// Some 15-6.6 kernel have this backport while others don't have, e.g. Pixel 10
+// See also:
+// https://github.com/tiann/KernelSU/issues/3629
+#define NEED_BACKPORT_COMPAT \\
+    LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
+
+#if NEED_BACKPORT_COMPAT
+static bool has_call_to_spin_lock = false;
+#endif
+
+static void disable_seccomp(void)
+{
+#ifdef KSU_HAS_SECCOMP_FILTER_RELEASE
+    struct task_struct *fake;
+
+    fake = kmalloc(sizeof(*fake), GFP_KERNEL);
+    if (!fake) {
+        pr_warn("failed to alloc fake task_struct\\n");
+        return;
+    }
+#endif
+
+    // Refer to kernel/seccomp.c: seccomp_set_mode_strict
+    // When disabling Seccomp, ensure that current->sighand->siglock is held during the operation.
+    spin_lock_irq(&current->sighand->siglock);
+    // disable seccomp
+#if defined(CONFIG_GENERIC_ENTRY) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)
+    clear_syscall_work(SECCOMP);
+#else
+    clear_thread_flag(TIF_SECCOMP);
+#endif
+
+#ifdef KSU_HAS_SECCOMP_FILTER_RELEASE
+    memcpy(fake, current, sizeof(*fake));
+#endif
+    current->seccomp.mode = 0;
+#ifndef KSU_HAS_SECCOMP_FILTER_RELEASE
+    // put_seccomp_filter is allowed while we holding sighand
+    put_seccomp_filter(current);
+#endif
+    current->seccomp.filter = NULL;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0) || defined(KSU_OPTIONAL_SECCOMP_FILTER_CNT))
+    atomic_set(&current->seccomp.filter_count, 0);
+#endif
+    spin_unlock_irq(&current->sighand->siglock);
+
+#ifdef KSU_HAS_SECCOMP_FILTER_RELEASE
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+    fake->flags |= PF_EXITING;
+#elif NEED_BACKPORT_COMPAT
+    if (has_call_to_spin_lock) {
+        fake->flags |= PF_EXITING;
+    } else {
+        fake->sighand = NULL;
+    }
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)
+    fake->sighand = NULL;
+#endif
+    seccomp_filter_release(fake);
+    kfree(fake);
+#endif
+}"""
+            s = s[:start] + new_block + s[end:]
+            ap_path.write_text(s)
+            print(f"OK: {AP} disable_seccomp guarded for <5.9 (seccomp_filter_release)")
+            fixes += 1
+        else:
+            print(f"WARN: {AP} anchors not found")
+else:
+    print(f"SKIP: {AP} not present")
 
 if fixes == 0:
     print("NOTE: no fixes applied (anchors missing or already applied)")
