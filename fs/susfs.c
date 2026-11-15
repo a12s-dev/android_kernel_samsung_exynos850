@@ -178,9 +178,9 @@ int susfs_add_sus_mount(struct st_susfs_sus_mount* __user user_info) {
 	struct st_susfs_sus_mount_list *new_list = NULL;
 	struct st_susfs_sus_mount info;
 
-	if (copy_from_user(&info, (void __user *)*user_info, sizeof(info))) {
+	if (copy_from_user(&info, user_info, sizeof(info))) {
 		SUSFS_LOGE("failed copying from userspace\n");
-		return;
+		return 1;
 	}
 
 #if defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_COMPAT_STAT64)
