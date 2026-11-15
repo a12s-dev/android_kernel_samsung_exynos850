@@ -242,8 +242,27 @@ KSU_419_COMPAT = r"""/* 4.19 compat: nofault copies + misc 5.x helpers (force-in
 #include <linux/version.h>
 #include <linux/uaccess.h>
 #include <linux/string.h>
+#include <linux/fs.h>
+#include <linux/cred.h>
 #include <linux/sched/task.h>
 #include <linux/task_work.h>
+
+/* SELinux accessors: helpers appeared ~5.1; pre-5.1 i_security/security
+   point directly at the SELinux structs (builtin does the same). */
+struct inode_security_struct;
+struct task_security_struct;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 1, 0) && !defined(KSU_HAS_SELINUX_INODE)
+static inline struct inode_security_struct *selinux_inode(const struct inode *inode)
+{
+	return (struct inode_security_struct *)inode->i_security;
+}
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 1, 0) && !defined(KSU_HAS_SELINUX_CRED)
+static inline struct task_security_struct *selinux_cred(const struct cred *cred)
+{
+	return (struct task_security_struct *)cred->security;
+}
+#endif
 
 /* task_work_add() 3rd arg became TWA_* flags in 5.7; 4.19 takes bool. */
 #ifndef TWA_RESUME
@@ -358,6 +377,22 @@ if kbuild.exists():
         fixes += 1
     else:
         print("SKIP: Kbuild already feature-detects seccomp filter_count")
+    s = kbuild.read_text()
+    if "KSU_HAS_SELINUX_INODE" not in s:
+        s += (
+            "\n# selinux_inode/selinux_cred accessors: tree-provided on newer Android\n"
+            "ifeq ($(shell grep -q 'selinux_inode' $(srctree)/security/selinux/include/objsec.h; echo $$?),0)\n"
+            "ccflags-y += -DKSU_HAS_SELINUX_INODE\n"
+            "endif\n"
+            "ifeq ($(shell grep -q 'selinux_cred' $(srctree)/security/selinux/include/objsec.h; echo $$?),0)\n"
+            "ccflags-y += -DKSU_HAS_SELINUX_CRED\n"
+            "endif\n"
+        )
+        kbuild.write_text(s)
+        print("OK: Kbuild feature-detects selinux_inode/selinux_cred")
+        fixes += 1
+    else:
+        print("SKIP: Kbuild already feature-detects selinux accessors")
 else:
     print("SKIP: Kbuild not present (builtin uses unity Makefile)")
 
