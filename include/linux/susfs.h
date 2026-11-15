@@ -271,4 +271,31 @@ void susfs_set_log(bool enabled);
 int susfs_sus_su(struct st_sus_su* __user user_info);
 #endif
 
+
+/* classic susfs4ksu inode/task flags (i_state bits) - used by fs/susfs.c
+ * and the 4.19 fs hooks (hooks also inline the literal values) */
+#define INODE_STATE_SUS_PATH 16777216 // 1 << 24
+#define INODE_STATE_SUS_MOUNT 33554432 // 1 << 25
+#define INODE_STATE_SUS_KSTAT 67108864 // 1 << 26
+#define TASK_STRUCT_KABI3_IS_ZYGOTE 1
+#define USER_STRUCT_KABI1_NON_ROOT_USER_APP_PROFILE 16777216
+
+/* classic list payloads still used by fs/susfs.c internals */
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+struct st_susfs_sus_mount {
+	char target_pathname[SUSFS_MAX_LEN_PATHNAME];
+	unsigned long target_dev;
+};
+#endif
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+struct st_susfs_try_umount {
+	char target_pathname[SUSFS_MAX_LEN_PATHNAME];
+	int mnt_mode;
+};
+struct st_susfs_try_umount_list {
+	struct list_head list;
+	struct st_susfs_try_umount info;
+};
+#endif
+
 #endif

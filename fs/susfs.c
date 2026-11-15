@@ -303,7 +303,7 @@ void susfs_add_sus_kstat(void __user **user_info) {
 				cursor->info.spoofed_atime_tv_nsec, cursor->info.spoofed_mtime_tv_nsec, cursor->info.spoofed_ctime_tv_nsec,
 				cursor->info.spoofed_blksize, cursor->info.spoofed_blocks);
 			spin_unlock(&susfs_spin_lock);
-			return 0;
+			return;
 		}
 	}
 
@@ -329,7 +329,7 @@ void susfs_add_sus_kstat(void __user **user_info) {
 		new_list->info.spoofed_atime_tv_nsec, new_list->info.spoofed_mtime_tv_nsec, new_list->info.spoofed_ctime_tv_nsec,
 		new_list->info.spoofed_blksize, new_list->info.spoofed_blocks);
 	spin_unlock(&susfs_spin_lock);
-	return 0;
+	return;
 }
 
 void susfs_update_sus_kstat(void __user **user_info) {
@@ -354,7 +354,7 @@ void susfs_update_sus_kstat(void __user **user_info) {
 			}
 			susfs_update_sus_kstat_inode(&cursor->info);
 			spin_unlock(&susfs_spin_lock);
-			return 0;
+			return;
 		}
 	}
 	spin_unlock(&susfs_spin_lock);
@@ -443,7 +443,7 @@ void susfs_set_uname(void __user **user_info) {
 	spin_unlock(&susfs_uname_spin_lock);
 	SUSFS_LOGI("setting spoofed release: '%s', version: '%s'\n",
 				my_uname.release, my_uname.version);
-	return 0;
+	return;
 }
 
 int susfs_spoof_uname(struct new_utsname* tmp) {
