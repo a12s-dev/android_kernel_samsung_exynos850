@@ -235,12 +235,36 @@ patch(
 )
 
 # --- main: force-include a 4.19 nofault compat header for all ksu objects ---
-KSU_419_COMPAT = r"""/* 4.19 compat: nofault user/kernel copy helpers (force-included via Kbuild). */
+KSU_419_COMPAT = r"""/* 4.19 compat: nofault copies + misc 5.x helpers (force-included via Kbuild). */
 #ifndef __KSU_419_COMPAT_H
 #define __KSU_419_COMPAT_H
 
 #include <linux/version.h>
 #include <linux/uaccess.h>
+#include <linux/string.h>
+#include <linux/sched/task.h>
+#include <linux/task_work.h>
+
+/* task_work_add() 3rd arg became TWA_* flags in 5.7; 4.19 takes bool. */
+#ifndef TWA_RESUME
+#define TWA_RESUME 1
+#endif
+
+/* fallthrough: kernel macro since 5.4 (compiler_attributes.h). */
+#ifndef fallthrough
+#define fallthrough do { } while (0)
+#endif
+
+/* strscpy_pad(): upstream 5.4+. Zero-pads the whole dest buffer. */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
+static inline void ksu_strscpy_pad(char *dest, const char *src, size_t count)
+{
+	memset(dest, 0, count);
+	if (count)
+		strncpy(dest, src, count - 1);
+}
+#define strscpy_pad(dest, src, count) ksu_strscpy_pad((dest), (src), (count))
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
 #ifndef copy_from_kernel_nofault
@@ -290,7 +314,7 @@ static inline long copy_to_user_nofault(void __user *to, const void *from, unsig
 """
 
 compat_path = Path("KernelSU/kernel/ksu_419_compat.h")
-if compat_path.exists() and "__KSU_419_COMPAT_H" in compat_path.read_text():
+if compat_path.exists() and compat_path.read_text() == KSU_419_COMPAT:
     print("SKIP: ksu_419_compat.h already written")
 else:
     compat_path.write_text(KSU_419_COMPAT)
