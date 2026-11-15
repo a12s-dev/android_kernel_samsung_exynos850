@@ -66,6 +66,103 @@ patch(
     "drop nonexistent uapi/linux/mount.h include",
 )
 
+# --- main: pkg_observer fsnotify handler signature split at 5.9 ---
+# Port builtin's pkg_observer_compat.h (handler decl macro + fname helpers).
+PO_COMPAT = """// This header should not be used outside of pkg_observer.c!
+
+#include <linux/version.h>
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0)
+typedef const struct qstr *ksu_fname_t;
+#define ksu_fname_len(f) ((f)->len)
+#define ksu_fname_arg(f) ((f)->name)
+#else
+typedef const unsigned char *ksu_fname_t;
+#define ksu_fname_len(f) (strlen(f))
+#define ksu_fname_arg(f) (f)
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+#define KSU_DECL_FSNOTIFY_OPS(name)                                                                                    \\
+    int name(struct fsnotify_mark *mark, u32 mask, struct inode *inode, struct inode *dir,                             \\
+             const struct qstr *file_name, u32 cookie)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0)
+#define KSU_DECL_FSNOTIFY_OPS(name)                                                                                    \\
+    int name(struct fsnotify_group *group, struct inode *inode, u32 mask, const void *data, int data_type,             \\
+             ksu_fname_t file_name, u32 cookie, struct fsnotify_iter_info *iter_info)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0)
+#define KSU_DECL_FSNOTIFY_OPS(name)                                                                                    \\
+    int name(struct fsnotify_group *group, struct inode *inode, u32 mask, const void *data, int data_type,             \\
+             ksu_fname_t file_name, u32 cookie, struct fsnotify_iter_info *iter_info)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+#define KSU_DECL_FSNOTIFY_OPS(name)                                                                                    \\
+    int name(struct fsnotify_group *group, struct inode *inode, struct fsnotify_mark *inode_mark,                      \\
+             struct fsnotify_mark *vfsmount_mark, u32 mask, const void *data, int data_type, ksu_fname_t file_name,    \\
+             u32 cookie, struct fsnotify_iter_info *iter_info)
+#else
+#define KSU_DECL_FSNOTIFY_OPS(name)                                                                                    \\
+    int name(struct fsnotify_group *group, struct inode *inode, struct fsnotify_mark *inode_mark,                      \\
+             struct fsnotify_mark *vfsmount_mark, u32 mask, void *data, int data_type, ksu_fname_t file_name,          \\
+             u32 cookie)
+#endif
+"""
+po_compat = Path("KernelSU/kernel/manager/pkg_observer_compat.h")
+if po_compat.exists() and "KSU_DECL_FSNOTIFY_OPS" in po_compat.read_text():
+    print("SKIP: pkg_observer_compat.h already written")
+else:
+    po_compat.parent.mkdir(parents=True, exist_ok=True)
+    po_compat.write_text(PO_COMPAT)
+    print("OK: wrote KernelSU/kernel/manager/pkg_observer_compat.h")
+    fixes += 1
+
+patch(
+    "KernelSU/kernel/manager/pkg_observer.c",
+    '#include "manager/throne_tracker.h"',
+    '#include "manager/throne_tracker.h"\n#include "manager/pkg_observer_compat.h" // KSU_DECL_FSNOTIFY_OPS',
+    "include pkg_observer_compat.h",
+)
+
+patch(
+    "KernelSU/kernel/manager/pkg_observer.c",
+    """static int ksu_handle_inode_event(struct fsnotify_mark *mark, u32 mask, struct inode *inode, struct inode *dir,
+                                  const struct qstr *file_name, u32 cookie)
+{
+    if (!file_name)
+        return 0;
+    if (mask & FS_ISDIR)
+        return 0;
+    if (file_name->len == 13 && !memcmp(file_name->name, "packages.list", 13)) {
+        pr_info("packages.list detected: %d\\n", mask);
+        ksu_defer_track_throne();
+    }
+    return 0;
+}
+
+static const struct fsnotify_ops ksu_ops = {
+    .handle_inode_event = ksu_handle_inode_event,
+};""",
+    """static KSU_DECL_FSNOTIFY_OPS(ksu_handle_generic_event)
+{
+    if (!file_name || (mask & FS_ISDIR))
+        return 0;
+
+    if (ksu_fname_len(file_name) == 13 && !memcmp(ksu_fname_arg(file_name), "packages.list", 13)) {
+        pr_info("packages.list detected: %d\\n", mask);
+        ksu_defer_track_throne();
+    }
+    return 0;
+}
+
+static const struct fsnotify_ops ksu_ops = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+    .handle_inode_event = ksu_handle_generic_event,
+#else
+    .handle_event = ksu_handle_generic_event,
+#endif
+};""",
+    "fsnotify handler version guard",
+)
+
 # --- main: linux/minmax.h is 5.4+; 4.19 has min() in linux/kernel.h ---
 patch(
     "KernelSU/kernel/sulog/event.c",
