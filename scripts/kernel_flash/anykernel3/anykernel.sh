@@ -5,7 +5,7 @@
 ### AnyKernel setup
 # global properties
 properties() { '
-kernel.string=SukiSU manual kernel r21 for Galaxy A12/M12 (exynos850) by @varifocal
+kernel.string=SukiSU kernel for Galaxy A12/M12 (exynos850) by @varifocal
 do.devicecheck=1
 do.modules=0
 do.systemless=0
@@ -40,8 +40,7 @@ PATCH_VBMETA_FLAG=auto;
 
 ui_print " ";
 ui_print "================================================";
-ui_print "  SukiSU r21-manual kernel  ::  Galaxy A12 / M12";
-ui_print "  4.19.148-suki-r21-manual-varifocal";
+ui_print "  SukiSU kernel  ::  Galaxy A12 / M12 (exynos850)";
 ui_print "  kernel built by @varifocal";
 ui_print "  github.com/varifocal";
 ui_print "================================================";

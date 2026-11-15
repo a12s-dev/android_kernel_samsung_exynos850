@@ -10,6 +10,9 @@ env:
   ARCH: arm64
   CLANG_VER: clang-r383902
   CLANG_REF: refs/heads/android-exynos-r11-4.19-android15-qpr2
+  # empty-but-set: setlocalversion skips its trailing '+' when LOCALVERSION is set;
+  # make itself never reads LOCALVERSION (only CONFIG_LOCALVERSION is used)
+  LOCALVERSION: ""
 
 jobs:
   build:
