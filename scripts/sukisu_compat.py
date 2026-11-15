@@ -723,6 +723,8 @@ if main_rules.exists() and ref_rules.exists():
             "#include <linux/mm.h>\n"
             "#include <linux/cpumask.h>\n"
             "#include <linux/spinlock.h>\n"
+            "#include <linux/sched/types.h>\n"
+            "#include <linux/stop_machine.h>\n"
             "\n"
         )
         main_rules.write_text(includes + extra + ref_rules.read_text())
