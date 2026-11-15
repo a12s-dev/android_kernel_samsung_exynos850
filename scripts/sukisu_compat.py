@@ -769,28 +769,25 @@ patch(
     "dup/destroy protos guarded >=5.10",
 )
 
-# 5) sepolicy.c: dup/destroy BODIES only exist >=5.10 (span to EOF)
-sp = Path("KernelSU/kernel/selinux/sepolicy.c")
-if sp.exists():
-    s = sp.read_text()
-    if "/* dup/destroy: selinux_policy era */" in s:
-        print("SKIP: sepolicy.c dup/destroy already guarded")
+# 5) sepolicy.c: wholesale swap to builtin's version-forked body
+#    (avtab flex_array vs ptr, filename_trans old/new, type_val paths,
+#    dup/destroy already >=5.10-gated inside builtin's file)
+main_sp = Path("KernelSU/kernel/selinux/sepolicy.c")
+ref_sp = Path("scripts/reference/selinux_sepolicy.c")
+if main_sp.exists() and ref_sp.exists():
+    s = main_sp.read_text()
+    if "susfs_add_sus_avd_allowed_by_type" in s:
+        print("SKIP: sepolicy.c already builtin body")
+    elif "#define KSU_SUPPORT_ADD_TYPE" in s:
+        inc_end = s.index("#define KSU_SUPPORT_ADD_TYPE")
+        includes = s[:inc_end]
+        main_sp.write_text(includes + ref_sp.read_text())
+        print("OK: sepolicy.c replaced with builtin dual-version body")
+        fixes += 1
     else:
-        marker = "// ======== sepolicy ========"
-        if marker in s:
-            idx = s.index(marker)
-            sp.write_text(
-                s[:idx]
-                + "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) /* dup/destroy: selinux_policy era */\n"
-                + s[idx:]
-                + "\n#endif /* >=5.10 dup/destroy */\n"
-            )
-            print("OK: sepolicy.c dup/destroy guarded >=5.10 (to EOF)")
-            fixes += 1
-        else:
-            print("WARN: sepolicy.c marker not found")
+        print("WARN: sepolicy.c include-split anchor not found")
 else:
-    print("SKIP: sepolicy.c not present")
+    print("SKIP: sepolicy.c or scripts/reference/selinux_sepolicy.c missing")
 
 # 6) selinux_hide call sites: file itself is >=5.10-only
 patch(
