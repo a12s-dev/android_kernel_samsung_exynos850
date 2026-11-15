@@ -876,6 +876,14 @@ if kbuild.exists():
     else:
         print("SKIP: Kbuild already feature-detects selinux_state")
 
+# --- dispatch.c: task_pgrp/task_session live in sched/signal.h on 4.19 ---
+patch(
+    "KernelSU/kernel/supercall/dispatch.c",
+    "#include <linux/ratelimit.h>\n",
+    "#include <linux/ratelimit.h>\n#include <linux/sched/signal.h>\n",
+    "include sched/signal.h (task_pgrp/task_session)",
+)
+
 if fixes == 0:
     print("NOTE: no fixes applied (anchors missing or already applied)")
 print(f"DONE ({fixes} fixes)")
