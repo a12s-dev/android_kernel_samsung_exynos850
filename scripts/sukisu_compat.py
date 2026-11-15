@@ -610,6 +610,64 @@ static void disable_seccomp(void)
 else:
     print(f"SKIP: {AP} not present")
 
+# --- main: cpu_spoof needs 5.10+ vDSO/clocksource (builtin compiles it out <5.10) ---
+# 1) Kbuild: only link extension/cpu_spoof.o on >=5.10
+patch(
+    "KernelSU/kernel/Kbuild",
+    "kernelsu-objs += extension/cpu_spoof.o",
+    "# cpu_spoof needs 5.10+ vDSO interfaces; builtin gates KSU_CAN_USE_CPU_SPOOF <5.10\n"
+    "ifeq ($(shell test $(VERSION) -gt 5 -o $(VERSION) -eq 5 -a $(PATCHLEVEL) -ge 10; echo $$?),0)\n"
+    "kernelsu-objs += extension/cpu_spoof.o\n"
+    "endif",
+    "cpu_spoof.o only >=5.10",
+)
+
+# 2) extension.c: guard include, handler struct, registration
+patch(
+    "KernelSU/kernel/extension/extension.c",
+    '#include "kpm.h"\n#include "cpu_spoof.h"\n#include "umount_paths.h"',
+    '#include "kpm.h"\n'
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\n"
+    '#include "cpu_spoof.h"\n'
+    "#endif\n"
+    '#include "umount_paths.h"',
+    "guard cpu_spoof.h include >=5.10",
+)
+
+patch(
+    "KernelSU/kernel/extension/extension.c",
+    """    static const struct ksu_extension_handler cpu_spoof_handler = {
+        .extension_id = KSU_EXTENSION_CPU_SPOOF,
+        .name = "cpu_spoof",
+        /* State lives in each ioctl payload; nothing to toggle or keep. */
+        .caps = 0,
+        .ops = NULL,
+        .io_handler = ksu_extension_cpu_spoof_io,
+    };""",
+    """#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+    static const struct ksu_extension_handler cpu_spoof_handler = {
+        .extension_id = KSU_EXTENSION_CPU_SPOOF,
+        .name = "cpu_spoof",
+        /* State lives in each ioctl payload; nothing to toggle or keep. */
+        .caps = 0,
+        .ops = NULL,
+        .io_handler = ksu_extension_cpu_spoof_io,
+    };
+#endif""",
+    "guard cpu_spoof handler >=5.10",
+)
+
+patch(
+    "KernelSU/kernel/extension/extension.c",
+    """    if (ksu_register_extension_handler(&cpu_spoof_handler))
+        pr_err("extension: failed to register cpu_spoof\\n");""",
+    """#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+    if (ksu_register_extension_handler(&cpu_spoof_handler))
+        pr_err("extension: failed to register cpu_spoof\\n");
+#endif""",
+    "guard cpu_spoof registration >=5.10",
+)
+
 if fixes == 0:
     print("NOTE: no fixes applied (anchors missing or already applied)")
 print(f"DONE ({fixes} fixes)")
