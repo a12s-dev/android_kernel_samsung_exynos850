@@ -178,4 +178,36 @@ static void input_handle_event(struct input_dev *dev,
 """,
 )
 
+# ---------- kernel/reboot.c (ksud driver-fd install via magic reboot) ----------
+edit(
+    "kernel/reboot.c",
+    """SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+		void __user *, arg)
+{
+	struct pid_namespace *pid_ns = task_active_pid_ns(current);
+	char buffer[256];
+	int ret = 0;
+
+	/* We only trust the superuser with rebooting the system. */
+""",
+    """#ifdef CONFIG_KSU
+extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
+			void __user **arg);
+#endif
+SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+		void __user *, arg)
+{
+	struct pid_namespace *pid_ns = task_active_pid_ns(current);
+	char buffer[256];
+	int ret = 0;
+
+#ifdef CONFIG_KSU
+	if (!ksu_handle_sys_reboot(magic1, magic2, cmd, &arg))
+		return 0;
+#endif
+
+	/* We only trust the superuser with rebooting the system. */
+""",
+)
+
 print("ALL MANUAL HOOKS APPLIED")
