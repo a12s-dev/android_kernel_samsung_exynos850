@@ -1,0 +1,285 @@
+name: Build SukiSU Kernel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  ARCH: arm64
+  CLANG_VER: clang-r383902
+  CLANG_REF: refs/heads/android-exynos-r11-4.19-android15-qpr2
+  # empty-but-set: setlocalversion skips its trailing '+' when LOCALVERSION is set;
+  # make itself never reads LOCALVERSION (only CONFIG_LOCALVERSION is used)
+  LOCALVERSION: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # builtin/manual is the SUSFS-capable branch; kprobes fallback is
+        # dispatched manually only if this job keeps failing (kprobes/main
+        # has no CONFIG_KSU_SUSFS Kconfig)
+        hook: [manual]
+    steps:
+      - name: Checkout suki-build
+        uses: actions/checkout@v4
+        with:
+          ref: suki-build
+          fetch-depth: 1
+
+      - name: Cache toolchain
+        id: cache-tc
+        uses: actions/cache@v4
+        with:
+          path: ~/tc
+          key: tc-${{ env.CLANG_VER }}-gcc49-v1
+
+      - name: Download toolchains
+        if: steps.cache-tc.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/tc"
+          cd "$HOME/tc"
+          curl -fL --retry 3 -o clang.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/${CLANG_REF}/${CLANG_VER}.tar.gz"
+          mkdir -p clang && tar -xzf clang.tar.gz -C clang
+          rm -f clang.tar.gz
+          curl -fL --retry 3 -o gcc64.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android-msm-barbet-4.19-android12L.tar.gz"
+          mkdir -p gcc64 && tar -xzf gcc64.tar.gz -C gcc64
+          rm -f gcc64.tar.gz
+          curl -fL --retry 3 -o gcc32.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/heads/android-msm-barbet-4.19-android12L.tar.gz"
+          mkdir -p gcc32 && tar -xzf gcc32.tar.gz -C gcc32
+          rm -f gcc32.tar.gz
+          ls gcc64/bin | head
+          ls gcc32/bin | head
+          du -sh "$HOME/tc"
+
+      - name: Install missing packages only
+        run: |
+          set -euo pipefail
+          for p in ccache bc bison flex libssl-dev libelf-dev rsync; do
+            if ! dpkg -s "$p" >/dev/null 2>&1; then
+              sudo apt-get update -qq
+              sudo apt-get install -y "$p"
+            else
+              echo "$p present"
+            fi
+          done
+          command -v ccache; ccache --version | head -1
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref_name }}-
+
+      - name: Setup SukiSU (${{ matrix.hook }})
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.hook }}" = "kprobes" ]; then
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+          else
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+            python3 scripts/apply_manual_hooks.py
+          fi
+          python3 scripts/sukisu_compat.py
+          git status --short | head
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          R="${{ github.run_number }}"
+          SHA=$(git rev-parse --short=8 HEAD)
+          LV="-suki-r${R}-varifocal-${SHA}"
+          KPROBE_OPTS="-d KPROBES -d KPROBE_EVENTS -d KRETPROBES"
+          echo "LOCALVERSION=$LV"
+          make ARCH=arm64 a12s_defconfig
+          ./scripts/config --file .config \
+            -e KSU -e KPM \
+            -e KALLSYMS -e KALLSYMS_ALL -e OVERLAY_FS -e EXT4_FS \
+            -e KSU_SUSFS \
+            -e KSU_SUSFS_SUS_PATH -e KSU_SUSFS_SUS_MOUNT -e KSU_SUSFS_SUS_KSTAT \
+            -e KSU_SUSFS_SPOOF_UNAME -e KSU_SUSFS_ENABLE_LOG \
+            -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
+            -e KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+            -e KSU_SUSFS_OPEN_REDIRECT -e KSU_SUSFS_SUS_MAP \
+            -e KSU_SUSFS_PRIORITY_UID_FILTER \
+            -d DEBUG_INFO -d DEBUG_INFO_DWARF4 -d DEBUG_INFO_DWARF5 \
+            -d LOCALVERSION_AUTO \
+            $KPROBE_OPTS \
+            --set-str LOCALVERSION "$LV"
+          make ARCH=arm64 olddefconfig
+          echo "=== key configs ==="
+          grep -E 'CONFIG_KSU|CONFIG_KPM|CONFIG_KPROBES|CONFIG_KALLSYMS|CONFIG_OVERLAY_FS|CONFIG_LOCALVERSION|CONFIG_PSTORE|CONFIG_DEBUG_INFO=' .config | head -50
+
+      - name: Config gate (fail if required options missing)
+        run: |
+          set -euo pipefail
+          fail=0
+          require() {
+            if grep -q "^$1=y" .config; then
+              echo "OK  $1=y"
+            else
+              echo "MISSING $1"
+              fail=1
+            fi
+          }
+          require CONFIG_KSU
+          require CONFIG_KPM
+          require CONFIG_KALLSYMS
+          require CONFIG_KALLSYMS_ALL
+          require CONFIG_KSU_SUSFS
+          require CONFIG_KSU_SUSFS_SUS_PATH
+          require CONFIG_KSU_SUSFS_SUS_MOUNT
+          require CONFIG_KSU_SUSFS_SUS_KSTAT
+          require CONFIG_KSU_SUSFS_SPOOF_UNAME
+          require CONFIG_KSU_SUSFS_ENABLE_LOG
+          require CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+          require CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+          require CONFIG_KSU_SUSFS_OPEN_REDIRECT
+          require CONFIG_KSU_SUSFS_SUS_MAP
+          require CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+          # PSTORE kept, DEBUG_INFO off (warning only if present)
+          grep -q "^CONFIG_PSTORE=y" .config && echo "OK  CONFIG_PSTORE=y" || echo "WARN PSTORE not set"
+          grep -q "^CONFIG_DEBUG_INFO=y" .config && { echo "FAIL DEBUG_INFO still on"; fail=1; } || echo "OK  DEBUG_INFO off"
+          if [ "$fail" -ne 0 ]; then
+            echo "=== CONFIG GATE FAILED ==="
+            exit 1
+          fi
+          echo "=== config gate passed ==="
+
+      - name: Build Image
+        run: |
+          set -euo pipefail
+          export CCACHE_DIR="$HOME/.ccache"
+          export CCACHE_MAXSIZE=2G
+          export PATH="$HOME/tc/clang/bin:$HOME/tc/gcc64/bin:$HOME/tc/gcc32/bin:$PATH"
+          ccache -z
+          START=$(date +%s)
+          make ARCH=arm64 \
+            CC="ccache clang" \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_COMPAT=arm-linux-androideabi- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            LD=ld.lld NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
+            -j"$(nproc)" Image 2>&1 | tee build.log
+          END=$(date +%s)
+          echo "BUILD_SECONDS=$((END-START))" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Image: $(ls -la arch/arm64/boot/Image)"
+          ccache -s | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: KernelPatch Image for KPM
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/kpm
+          curl -fsSL -o /tmp/kpm/patch_linux \
+            https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/main/kpm/patch_linux
+          curl -fsSL -o /tmp/kpm/kpimg \
+            https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/main/kpm/kpimg
+          chmod +x /tmp/kpm/patch_linux
+          ls -la /tmp/kpm/
+          # deterministic superkey (not a device secret; needed to auth KPM modules)
+          KPM_SKEY=$(printf 'varifocal-a12s-kpm' | sha256sum | cut -c1-32)
+          echo "KPM_SKEY=$KPM_SKEY" | tee -a "$GITHUB_STEP_SUMMARY"
+          cp arch/arm64/boot/Image arch/arm64/boot/Image.orig
+          /tmp/kpm/patch_linux -p -i arch/arm64/boot/Image.orig \
+            -k /tmp/kpm/kpimg -s "$KPM_SKEY" -o arch/arm64/boot/Image.kpm
+          ls -la arch/arm64/boot/Image.orig arch/arm64/boot/Image.kpm
+          mv arch/arm64/boot/Image.kpm arch/arm64/boot/Image
+          # boot budget: template(46137344) must hold hdr+kernel+ramdisk+dtb tail
+          python3 - <<'EOF'
+          import struct, sys
+          tpl = open("scripts/kernel_flash/boot_template.img","rb").read()
+          img = open("arch/arm64/boot/Image","rb").read()
+          page = struct.unpack_from("<I", tpl, 36)[0]
+          ks_t,_,rs = struct.unpack_from("<III", tpl, 8)
+          ram_old = (page + ks_t + page - 1)//page*page
+          tail = len(tpl) - ram_old
+          need = page + len(img) + ((- (page+len(img))) % page) + tail
+          print(f"kernel={len(img)} need={need} partition={len(tpl)}")
+          if need > len(tpl):
+              print("FAIL: KPM-patched kernel does not fit boot partition")
+              sys.exit(1)
+          print("OK: fits boot partition")
+          EOF
+          echo "KPM patch done"
+
+      - name: Pack boot image + AnyKernel3 zip
+        run: |
+          set -euo pipefail
+          R="${{ github.run_number }}"
+          SHA=$(git rev-parse --short=8 HEAD)
+          mkdir -p dist
+          python3 scripts/kernel_flash/pack_boot.py \
+            arch/arm64/boot/Image scripts/kernel_flash/boot_template.img \
+            dist/boot_new.img
+          python3 scripts/kernel_flash/make_zip.py \
+            scripts/kernel_flash/anykernel3 arch/arm64/boot/Image \
+            "dist/SukiSU-r${R}-varifocal-${SHA}.zip"
+          cp scripts/kernel_flash/dtb_partition.img dist/dtb.img
+          ls -la dist/
+          {
+            echo "### Flashables"
+            echo "- version: 4.19.148-suki-r${R}-varifocal-${SHA}"
+            echo "- zip: \`SukiSU-r${R}-varifocal-${SHA}.zip\`"
+            echo "- boot_new.img + dtb.img packed"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a12s-${{ matrix.hook }}
+          path: |
+            arch/arm64/boot/Image
+            .config
+            build.log
+            dist/boot_new.img
+            dist/dtb.img
+            dist/*.zip
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Publish GitHub release (manual)
+        if: matrix.hook == 'manual'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          R="${{ github.run_number }}"
+          SHA=$(git rev-parse --short=8 HEAD)
+          TAG="r${R}-varifocal"
+          ZIP="dist/SukiSU-r${R}-varifocal-${SHA}.zip"
+          TITLE="SukiSU r${R} kernel - 4.19.148-suki-r${R}-varifocal-${SHA}"
+          NOTES="Custom 4.19.148 kernel with SukiSU Ultra root for Samsung Galaxy A12/M12 (exynos850), built by @varifocal.
+
+          **Version:** \`4.19.148-suki-r${R}-varifocal-${SHA}\`
+
+          ## Flash in TWRP (recommended)
+          1. Reboot to TWRP
+          2. Install -> select **SukiSU-r${R}-varifocal-${SHA}.zip**
+          3. Zip flashes kernel into boot + stock dtb partition, shows build credits
+          4. Reboot system
+
+          ## Files
+          - \`SukiSU-r${R}-varifocal-${SHA}.zip\` - TWRP flashable (AnyKernel3 by osm0sis)
+          - \`boot_new.img\` - full boot partition image (kernel+ramdisk+dtb-tail) for raw dd
+          - \`dtb.img\` - stock dtb partition dump (md5 96995b58d4cbf6aaa9041b4f00c7f6ae)
+
+          ## Credits
+          Kernel tree: galaxym12development/android_kernel_samsung_exynos850 (android-14.0) | Root: SukiSU Ultra | Flash zip: AnyKernel3 by osm0sis | Built by @varifocal"
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            dist/boot_new.img dist/dtb.img "$ZIP" \
+            || true
+          gh release upload "$TAG" dist/boot_new.img dist/dtb.img "$ZIP" --clobber
+          echo "Release: $(gh release view "$TAG" --json url --jq .url)"
