@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   ARCH: arm64
@@ -92,11 +92,11 @@ jobs:
         run: |
           set -euo pipefail
           R="${{ github.run_number }}"
+          SHA=$(git rev-parse --short=8 HEAD)
+          LV="-suki-r${R}-varifocal-${SHA}"
           if [ "${{ matrix.hook }}" = "kprobes" ]; then
-            LV="-suki-r${R}-varifocal"
             KPROBE_OPTS="-e KPROBES -e KPROBE_EVENTS -e KRETPROBES"
           else
-            LV="-suki-r${R}-manual-varifocal"
             KPROBE_OPTS="-d KPROBES -d KPROBE_EVENTS -d KRETPROBES -d KSU_SUSFS"
           fi
           echo "LOCALVERSION=$LV"
@@ -105,6 +105,7 @@ jobs:
             -e KSU -e KPM \
             -e KALLSYMS -e KALLSYMS_ALL -e OVERLAY_FS -e EXT4_FS \
             -d DEBUG_INFO -d DEBUG_INFO_DWARF4 -d DEBUG_INFO_DWARF5 \
+            -d LOCALVERSION_AUTO \
             $KPROBE_OPTS \
             --set-str LOCALVERSION "$LV"
           make ARCH=arm64 olddefconfig
@@ -131,6 +132,27 @@ jobs:
           echo "Image: $(ls -la arch/arm64/boot/Image)"
           ccache -s | tee -a "$GITHUB_STEP_SUMMARY"
 
+      - name: Pack boot image + AnyKernel3 zip
+        run: |
+          set -euo pipefail
+          R="${{ github.run_number }}"
+          SHA=$(git rev-parse --short=8 HEAD)
+          mkdir -p dist
+          python3 scripts/kernel_flash/pack_boot.py \
+            arch/arm64/boot/Image scripts/kernel_flash/boot_template.img \
+            dist/boot_new.img
+          python3 scripts/kernel_flash/make_zip.py \
+            scripts/kernel_flash/anykernel3 arch/arm64/boot/Image \
+            "dist/SukiSU-r${R}-varifocal-${SHA}.zip"
+          cp scripts/kernel_flash/dtb_partition.img dist/dtb.img
+          ls -la dist/
+          {
+            echo "### Flashables"
+            echo "- version: 4.19.148-suki-r${R}-varifocal-${SHA}"
+            echo "- zip: \`SukiSU-r${R}-varifocal-${SHA}.zip\`"
+            echo "- boot_new.img + dtb.img packed"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -139,5 +161,44 @@ jobs:
             arch/arm64/boot/Image
             .config
             build.log
+            dist/boot_new.img
+            dist/dtb.img
+            dist/*.zip
           include-hidden-files: true
           if-no-files-found: error
+
+      - name: Publish GitHub release (manual)
+        if: matrix.hook == 'manual'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          R="${{ github.run_number }}"
+          SHA=$(git rev-parse --short=8 HEAD)
+          TAG="r${R}-varifocal"
+          ZIP="dist/SukiSU-r${R}-varifocal-${SHA}.zip"
+          TITLE="SukiSU r${R} kernel - 4.19.148-suki-r${R}-varifocal-${SHA}"
+          NOTES="Custom 4.19.148 kernel with SukiSU Ultra root for Samsung Galaxy A12/M12 (exynos850), built by @varifocal.
+
+          **Version:** \`4.19.148-suki-r${R}-varifocal-${SHA}\`
+
+          ## Flash in TWRP (recommended)
+          1. Reboot to TWRP
+          2. Install -> select **SukiSU-r${R}-varifocal-${SHA}.zip**
+          3. Zip flashes kernel into boot + stock dtb partition, shows build credits
+          4. Reboot system
+
+          ## Files
+          - \`SukiSU-r${R}-varifocal-${SHA}.zip\` - TWRP flashable (AnyKernel3 by osm0sis)
+          - \`boot_new.img\` - full boot partition image (kernel+ramdisk+dtb-tail) for raw dd
+          - \`dtb.img\` - stock dtb partition dump (md5 96995b58d4cbf6aaa9041b4f00c7f6ae)
+
+          ## Credits
+          Kernel tree: galaxym12development/android_kernel_samsung_exynos850 (android-14.0) | Root: SukiSU Ultra | Flash zip: AnyKernel3 by osm0sis | Built by @varifocal"
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            dist/boot_new.img dist/dtb.img "$ZIP" \
+            || true
+          gh release upload "$TAG" dist/boot_new.img dist/dtb.img "$ZIP" --clobber
+          echo "Release: $(gh release view "$TAG" --json url --jq .url)"
