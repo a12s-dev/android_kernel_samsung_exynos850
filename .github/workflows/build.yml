@@ -93,10 +93,10 @@ jobs:
           set -euo pipefail
           R="${{ github.run_number }}"
           if [ "${{ matrix.hook }}" = "kprobes" ]; then
-            LV="-suki-r${R}"
+            LV="-suki-r${R}-varifocal"
             KPROBE_OPTS="-e KPROBES -e KPROBE_EVENTS -e KRETPROBES"
           else
-            LV="-suki-r${R}-manual"
+            LV="-suki-r${R}-manual-varifocal"
             KPROBE_OPTS="-d KPROBES -d KPROBE_EVENTS -d KRETPROBES -d KSU_SUSFS"
           fi
           echo "LOCALVERSION=$LV"
