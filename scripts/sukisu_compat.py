@@ -703,6 +703,180 @@ patch(
     "guard cpu_spoof registration >=5.10",
 )
 
+# =========================================================================
+# SELinux: main only has the modern (selinux_state.policy) path. Port
+# builtin's dual-path rules.c and gate 5.10+-only pieces (backup_sepolicy,
+# selinux_hide) exactly like builtin does.
+# =========================================================================
+
+# 1) rules.c = main's include block + builtin's dual-path body
+main_rules = Path("KernelSU/kernel/selinux/rules.c")
+ref_rules = Path("scripts/reference/selinux_rules.c")
+if main_rules.exists() and ref_rules.exists():
+    s = main_rules.read_text()
+    if "ksu_get_policy_rwlock" in s:
+        print("SKIP: rules.c already dual-path")
+    elif "struct selinux_policy *backup_sepolicy;" in s:
+        inc_end = s.index("struct selinux_policy *backup_sepolicy;")
+        includes = s[:inc_end]
+        extra = (
+            "#include <linux/mm.h>\n"
+            "#include <linux/cpumask.h>\n"
+            "#include <linux/spinlock.h>\n"
+            "\n"
+        )
+        main_rules.write_text(includes + extra + ref_rules.read_text())
+        print("OK: rules.c replaced with builtin dual-path body")
+        fixes += 1
+    else:
+        print("WARN: rules.c include-split anchor not found")
+else:
+    print("SKIP: rules.c or scripts/reference/selinux_rules.c missing")
+
+# 2) ksu.h: backup_sepolicy only exists >=5.10 (matches builtin)
+patch(
+    "KernelSU/kernel/include/ksu.h",
+    "extern struct selinux_policy *backup_sepolicy;",
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\n"
+    "extern struct selinux_policy *backup_sepolicy;\n"
+    "#endif",
+    "backup extern guarded >=5.10",
+)
+
+# 3) selinux.h: define KSU_COMPAT_USE_SELINUX_STATE like builtin
+patch(
+    "KernelSU/kernel/selinux/selinux.h",
+    "#ifndef __KSU_H_SELINUX\n#define __KSU_H_SELINUX\n",
+    "#ifndef __KSU_H_SELINUX\n"
+    "#define __KSU_H_SELINUX\n\n"
+    "#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)) || defined(KSU_COMPAT_HAS_SELINUX_STATE)\n"
+    "#define KSU_COMPAT_USE_SELINUX_STATE\n"
+    "#endif\n",
+    "KSU_COMPAT_USE_SELINUX_STATE like builtin",
+)
+
+# 4) sepolicy.h: dup/destroy protos only exist >=5.10
+patch(
+    "KernelSU/kernel/selinux/sepolicy.h",
+    "struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol);\n\n"
+    "void ksu_destroy_sepolicy(struct selinux_policy *orig);",
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\n"
+    "struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol);\n\n"
+    "void ksu_destroy_sepolicy(struct selinux_policy *orig);\n"
+    "#endif",
+    "dup/destroy protos guarded >=5.10",
+)
+
+# 5) sepolicy.c: dup/destroy BODIES only exist >=5.10 (span to EOF)
+sp = Path("KernelSU/kernel/selinux/sepolicy.c")
+if sp.exists():
+    s = sp.read_text()
+    if "/* dup/destroy: selinux_policy era */" in s:
+        print("SKIP: sepolicy.c dup/destroy already guarded")
+    else:
+        marker = "// ======== sepolicy ========"
+        if marker in s:
+            idx = s.index(marker)
+            sp.write_text(
+                s[:idx]
+                + "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) /* dup/destroy: selinux_policy era */\n"
+                + s[idx:]
+                + "\n#endif /* >=5.10 dup/destroy */\n"
+            )
+            print("OK: sepolicy.c dup/destroy guarded >=5.10 (to EOF)")
+            fixes += 1
+        else:
+            print("WARN: sepolicy.c marker not found")
+else:
+    print("SKIP: sepolicy.c not present")
+
+# 6) selinux_hide call sites: file itself is >=5.10-only
+patch(
+    "KernelSU/kernel/core/init.c",
+    "    ksu_lsm_hook_init();\n    ksu_selinux_hide_init();\n    ksu_avc_spoof_init();",
+    "    ksu_lsm_hook_init();\n"
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\n"
+    "    ksu_selinux_hide_init();\n"
+    "#endif\n"
+    "    ksu_avc_spoof_init();",
+    "guard hide_init call >=5.10",
+)
+
+patch(
+    "KernelSU/kernel/core/init.c",
+    "    ksu_shell_su_adb_only_exit();\n    ksu_avc_spoof_exit();\n    ksu_selinux_hide_exit();\n    ksu_lsm_hook_exit();",
+    "    ksu_shell_su_adb_only_exit();\n"
+    "    ksu_avc_spoof_exit();\n"
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\n"
+    "    ksu_selinux_hide_exit();\n"
+    "#endif\n"
+    "    ksu_lsm_hook_exit();",
+    "guard hide_exit call >=5.10",
+)
+
+patch(
+    "KernelSU/kernel/runtime/boot_event.c",
+    "    ksu_stop_input_hook_runtime();\n    ksu_selinux_hide_handle_post_fs_data();",
+    "    ksu_stop_input_hook_runtime();\n"
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\n"
+    "    ksu_selinux_hide_handle_post_fs_data();\n"
+    "#endif",
+    "guard hide_post_fs_data call >=5.10",
+)
+
+patch(
+    "KernelSU/kernel/runtime/boot_event.c",
+    "    track_throne(true);\n    ksu_selinux_hide_drop_backup_if_unused();\n    ksu_avc_spoof_late_init();",
+    "    track_throne(true);\n"
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\n"
+    "    ksu_selinux_hide_drop_backup_if_unused();\n"
+    "#endif\n"
+    "    ksu_avc_spoof_late_init();",
+    "guard hide_drop_backup call >=5.10",
+)
+
+patch(
+    "KernelSU/kernel/runtime/ksud_integration.c",
+    "            ksu_preinit_release();\n            ksu_selinux_hide_handle_second_stage();\n            apply_kernelsu_rules();",
+    "            ksu_preinit_release();\n"
+    "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)\n"
+    "            ksu_selinux_hide_handle_second_stage();\n"
+    "#endif\n"
+    "            apply_kernelsu_rules();",
+    "guard hide_second_stage call >=5.10",
+)
+
+# 7) Kbuild: exclude selinux_hide.o below 5.10; detect struct selinux_state
+patch(
+    "KernelSU/kernel/Kbuild",
+    "kernelsu-objs += feature/selinux_hide.o",
+    "# selinux_hide needs selinux_state.policy dup (5.10+); builtin excludes the file too\n"
+    "ifeq ($(shell test $(VERSION) -gt 5 -o $(VERSION) -eq 5 -a $(PATCHLEVEL) -ge 10; echo $$?),0)\n"
+    "kernelsu-objs += feature/selinux_hide.o\n"
+    "endif",
+    "selinux_hide.o only >=5.10",
+)
+
+kbuild = Path("KernelSU/kernel/Kbuild")
+if kbuild.exists():
+    s = kbuild.read_text()
+    if "KSU_COMPAT_HAS_SELINUX_STATE" not in s:
+        s += (
+            "\n# struct selinux_state: present in selinux's security.h (4.19+ here)\n"
+            "ifeq ($(shell grep -q 'struct selinux_state ' $(srctree)/security/selinux/include/security.h; echo $$?),0)\n"
+            "ccflags-y += -DKSU_COMPAT_HAS_SELINUX_STATE\n"
+            "endif\n"
+            "# old policy_rwlock exported from services.c (pre-selinux_ss relocations)\n"
+            "ifeq ($(shell grep -q '^DEFINE_RWLOCK(policy_rwlock);' $(srctree)/security/selinux/ss/services.c; echo $$?),0)\n"
+            "ccflags-y += -DKSU_COMPAT_HAS_EXPORTED_POLICY_RWLOCK\n"
+            "endif\n"
+        )
+        kbuild.write_text(s)
+        print("OK: Kbuild feature-detects selinux_state / policy_rwlock")
+        fixes += 1
+    else:
+        print("SKIP: Kbuild already feature-detects selinux_state")
+
 if fixes == 0:
     print("NOTE: no fixes applied (anchors missing or already applied)")
 print(f"DONE ({fixes} fixes)")
