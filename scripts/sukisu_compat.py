@@ -11,7 +11,7 @@ def patch(path, old, new, label):
         print(f"SKIP: {path} not present ({label})")
         return
     s = p.read_text()
-    if new in s:
+    if new and new in s:
         print(f"SKIP: {path} already fixed ({label})")
         return
     if old not in s:
@@ -55,6 +55,15 @@ patch(
     "#include <linux/pgtable.h>",
     "#include <asm/pgtable.h>",
     "pgtable.h -> asm/pgtable.h",
+)
+
+# --- main: <uapi/linux/mount.h> does not exist on this tree and nothing in
+# the file references its symbols (dead include) ---
+patch(
+    "KernelSU/kernel/infra/su_mount_ns.c",
+    "#include <uapi/linux/mount.h>\n",
+    "",
+    "drop nonexistent uapi/linux/mount.h include",
 )
 
 # --- main: linux/minmax.h is 5.4+; 4.19 has min() in linux/kernel.h ---
