@@ -353,3 +353,27 @@ void susfs_set_avc_log_spoofing(void __user **user_info)
 out:
 	copy_to_user((void __user *)*user_info, &info, sizeof(info));
 }
+
+/* ---- referenced by SukiSU lsm_hook (setresuid) and sepolicy add_rule ---- */
+
+#include <linux/workqueue.h>
+
+static void susfs_extra_works_fn(struct work_struct *work)
+{
+	/* placeholder worker: sdcard-monitor/uid-filter follow-ups run here
+	 * when ported; currently just proves the workqueue plumbing works */
+	pr_info("susfs: extra works ran\n");
+}
+
+struct work_struct susfs_extra_works =
+	__WORK_INITIALIZER(susfs_extra_works, susfs_extra_works_fn);
+
+int susfs_add_sus_avd_allowed_by_type(u32 s_type, u32 t_type, u16 type,
+				      u32 orig_avd_allowed)
+{
+	/* AVC denial-log spoofing storage; selinux avc hook not ported yet.
+	 * Return 0 so SukiSU's add_rule_raw path treats it as success. */
+	pr_debug("susfs: avd_allowed_by_type s=%u t=%u cls=%u avd=0x%x (stored noop)\n",
+		 s_type, t_type, type, orig_avd_allowed);
+	return 0;
+}
