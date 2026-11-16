@@ -2,6 +2,12 @@ name: Build SukiSU Kernel
 
 on:
   workflow_dispatch:
+    inputs:
+      susfs:
+        description: "full = SUSFS+KPM patch; nosusfs = diagnostic (SUSFS off, no kpimg)"
+        type: choice
+        options: [full, nosusfs]
+        default: full
 
 permissions:
   contents: write
@@ -107,18 +113,16 @@ jobs:
           SHA=$(git rev-parse --short=8 HEAD)
           LV="-suki-r${R}-varifocal-${SHA}"
           KPROBE_OPTS="-d KPROBES -d KPROBE_EVENTS -d KRETPROBES"
-          echo "LOCALVERSION=$LV"
+          SUSFS_OPTS="-e KSU_SUSFS -e KSU_SUSFS_SUS_PATH -e KSU_SUSFS_SUS_MOUNT -e KSU_SUSFS_SUS_KSTAT -e KSU_SUSFS_SPOOF_UNAME -e KSU_SUSFS_ENABLE_LOG -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS -e KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG -e KSU_SUSFS_OPEN_REDIRECT -e KSU_SUSFS_SUS_MAP -e KSU_SUSFS_PRIORITY_UID_FILTER"
+          if [ "${{ inputs.susfs }}" = "nosusfs" ]; then
+            SUSFS_OPTS="-d KSU_SUSFS -d KSU_SUSFS_SUS_PATH -d KSU_SUSFS_SUS_MOUNT -d KSU_SUSFS_SUS_KSTAT -d KSU_SUSFS_SPOOF_UNAME -d KSU_SUSFS_ENABLE_LOG -d KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS -d KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG -d KSU_SUSFS_OPEN_REDIRECT -d KSU_SUSFS_SUS_MAP -d KSU_SUSFS_PRIORITY_UID_FILTER"
+          fi
+          echo "LOCALVERSION=$LV susfs_mode=${{ inputs.susfs }}"
           make ARCH=arm64 a12s_defconfig
           ./scripts/config --file .config \
             -e KSU -e KPM \
             -e KALLSYMS -e KALLSYMS_ALL -e OVERLAY_FS -e EXT4_FS \
-            -e KSU_SUSFS \
-            -e KSU_SUSFS_SUS_PATH -e KSU_SUSFS_SUS_MOUNT -e KSU_SUSFS_SUS_KSTAT \
-            -e KSU_SUSFS_SPOOF_UNAME -e KSU_SUSFS_ENABLE_LOG \
-            -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
-            -e KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
-            -e KSU_SUSFS_OPEN_REDIRECT -e KSU_SUSFS_SUS_MAP \
-            -e KSU_SUSFS_PRIORITY_UID_FILTER \
+            $SUSFS_OPTS \
             -d DEBUG_INFO -d DEBUG_INFO_DWARF4 -d DEBUG_INFO_DWARF5 \
             -d LOCALVERSION_AUTO \
             $KPROBE_OPTS \
@@ -143,17 +147,21 @@ jobs:
           require CONFIG_KPM
           require CONFIG_KALLSYMS
           require CONFIG_KALLSYMS_ALL
-          require CONFIG_KSU_SUSFS
-          require CONFIG_KSU_SUSFS_SUS_PATH
-          require CONFIG_KSU_SUSFS_SUS_MOUNT
-          require CONFIG_KSU_SUSFS_SUS_KSTAT
-          require CONFIG_KSU_SUSFS_SPOOF_UNAME
-          require CONFIG_KSU_SUSFS_ENABLE_LOG
-          require CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-          require CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-          require CONFIG_KSU_SUSFS_OPEN_REDIRECT
-          require CONFIG_KSU_SUSFS_SUS_MAP
-          require CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+          if [ "${{ inputs.susfs }}" != "nosusfs" ]; then
+            require CONFIG_KSU_SUSFS
+            require CONFIG_KSU_SUSFS_SUS_PATH
+            require CONFIG_KSU_SUSFS_SUS_MOUNT
+            require CONFIG_KSU_SUSFS_SUS_KSTAT
+            require CONFIG_KSU_SUSFS_SPOOF_UNAME
+            require CONFIG_KSU_SUSFS_ENABLE_LOG
+            require CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+            require CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+            require CONFIG_KSU_SUSFS_OPEN_REDIRECT
+            require CONFIG_KSU_SUSFS_SUS_MAP
+            require CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+          else
+            grep -q "^CONFIG_KSU_SUSFS=y" .config && { echo "FAIL SUSFS still on"; fail=1; } || echo "OK  SUSFS off (diagnostic)"
+          fi
           # PSTORE kept, DEBUG_INFO off (warning only if present)
           grep -q "^CONFIG_PSTORE=y" .config && echo "OK  CONFIG_PSTORE=y" || echo "WARN PSTORE not set"
           grep -q "^CONFIG_DEBUG_INFO=y" .config && { echo "FAIL DEBUG_INFO still on"; fail=1; } || echo "OK  DEBUG_INFO off"
@@ -184,6 +192,7 @@ jobs:
           ccache -s | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: KernelPatch Image for KPM
+        if: inputs.susfs != 'nosusfs'
         run: |
           set -euo pipefail
           mkdir -p /tmp/kpm
