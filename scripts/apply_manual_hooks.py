@@ -71,8 +71,13 @@ edit(
 		return -EINVAL;
 """,
     """#ifdef CONFIG_KSU
+#ifdef CONFIG_KSU_SUSFS
+extern int ksu_handle_faccessat(int *dfd, struct filename **filename,
+				int *mode, int *flags);
+#else
 extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
 				int *mode, int *flags);
+#endif
 #endif
 long do_faccessat(int dfd, const char __user *filename, int mode)
 {
@@ -83,7 +88,17 @@ long do_faccessat(int dfd, const char __user *filename, int mode)
 	int res;
 	unsigned int lookup_flags = LOOKUP_FOLLOW;
 #ifdef CONFIG_KSU
+#ifdef CONFIG_KSU_SUSFS
+	{
+		struct filename *fn = getname(filename);
+		if (!IS_ERR(fn)) {
+			ksu_handle_faccessat(&dfd, &fn, &mode, NULL);
+			putname(fn);
+		}
+	}
+#else
 	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
+#endif
 #endif
 
 	if (mode & ~S_IRWXO)	/* where's F_OK, X_OK, W_OK, R_OK? */
@@ -134,8 +149,13 @@ edit(
 		return -EINVAL;
 """,
     """#ifdef CONFIG_KSU
+#ifdef CONFIG_KSU_SUSFS
+extern int ksu_handle_stat(int *dfd, struct filename **filename,
+			   int *flags);
+#else
 extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
 			   int *flags);
+#endif
 #endif
 int vfs_statx(int dfd, const char __user *filename, int flags,
 	      struct kstat *stat, u32 request_mask)
@@ -144,7 +164,17 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
 	int error = -EINVAL;
 	unsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;
 #ifdef CONFIG_KSU
+#ifdef CONFIG_KSU_SUSFS
+	{
+		struct filename *fn = getname(filename);
+		if (!IS_ERR(fn)) {
+			ksu_handle_stat(&dfd, &fn, &flags);
+			putname(fn);
+		}
+	}
+#else
 	ksu_handle_stat(&dfd, &filename, &flags);
+#endif
 #endif
 
 	if ((flags & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT |
