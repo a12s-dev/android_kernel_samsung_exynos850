@@ -189,18 +189,24 @@ jobs:
           mkdir -p /tmp/kpm
           curl -fsSL -o /tmp/kpm/patch_linux \
             https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/main/kpm/patch_linux
-          curl -fsSL -o /tmp/kpm/kpimg \
-            https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/main/kpm/kpimg
           chmod +x /tmp/kpm/patch_linux
-          ls -la /tmp/kpm/
-          # deterministic superkey (not a device secret; needed to auth KPM modules)
-          KPM_SKEY=$(printf 'varifocal-a12s-kpm' | sha256sum | cut -c1-32)
-          echo "KPM_SKEY=$KPM_SKEY" | tee -a "$GITHUB_STEP_SUMMARY"
+          # NOTE: the published patch_linux is a wrapper that ignores argv: it
+          # requires a file named exactly "Image" in its cwd, embeds its own
+          # kpimg, and writes "oImage". No superkey is accepted, derived or
+          # logged here (none is needed: the kpm load path never checks one).
           cp arch/arm64/boot/Image arch/arm64/boot/Image.orig
-          /tmp/kpm/patch_linux -p -i arch/arm64/boot/Image.orig \
-            -k /tmp/kpm/kpimg -s "$KPM_SKEY" -o arch/arm64/boot/Image.kpm
-          ls -la arch/arm64/boot/Image.orig arch/arm64/boot/Image.kpm
-          mv arch/arm64/boot/Image.kpm arch/arm64/boot/Image
+          cp arch/arm64/boot/Image /tmp/kpm/Image
+          (cd /tmp/kpm && ./patch_linux)
+          if [ ! -s /tmp/kpm/oImage ]; then
+            echo "FAIL: patch_linux wrapper produced no oImage"
+            exit 1
+          fi
+          if cmp -s arch/arm64/boot/Image.orig /tmp/kpm/oImage; then
+            echo "FAIL: patched image identical to unpatched"
+            exit 1
+          fi
+          cp /tmp/kpm/oImage arch/arm64/boot/Image
+          ls -la arch/arm64/boot/Image.orig arch/arm64/boot/Image
           # boot budget: template(46137344) must hold hdr+kernel+ramdisk+dtb tail
           python3 - <<'EOF'
           import struct, sys
@@ -246,6 +252,7 @@ jobs:
           name: a12s-${{ matrix.hook }}
           path: |
             arch/arm64/boot/Image
+            arch/arm64/boot/Image.orig
             .config
             build.log
             dist/boot_new.img
