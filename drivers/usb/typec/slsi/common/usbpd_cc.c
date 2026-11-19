@@ -104,7 +104,17 @@ void pdic_event_work(void *data, int dest, int id, int attach, int event, int su
 	struct s2mu205_usbpd_data *usbpd_data = data;
 #elif IS_ENABLED(CONFIG_PDIC_S2MU107)
 	struct s2mu107_usbpd_data *usbpd_data = data;
+#else
+	/*
+	 * No SLSI USBPD chip (we run SM5714 instead). The SLSI usbpd core
+	 * that calls this isn't active on a12s — bail out before touching
+	 * usbpd_data, which only exists for S2MU* above.
+	 */
+	(void)data; (void)dest; (void)id; (void)attach; (void)event; (void)sub;
+	return;
 #endif
+#if IS_ENABLED(CONFIG_PDIC_S2MU004) || IS_ENABLED(CONFIG_PDIC_S2MU106) || \
+	IS_ENABLED(CONFIG_PDIC_S2MU205) || IS_ENABLED(CONFIG_PDIC_S2MU107)
 	struct pdic_state_work *event_work;
 #if IS_ENABLED(CONFIG_TYPEC)
 	struct typec_partner_desc desc;
@@ -188,6 +198,7 @@ void pdic_event_work(void *data, int dest, int id, int attach, int event, int su
 	}
 }
 EXPORT_SYMBOL(pdic_event_work);
+#endif /* S2MU* usbpd_data available */
 #endif
 
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)
