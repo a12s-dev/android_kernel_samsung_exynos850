@@ -34,7 +34,11 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     elf_file = os.path.abspath(sys.argv[1])
-    readelf_path = os.path.abspath(sys.argv[2])
+    # READELF is often just "llvm-readelf" (Makefile LLVM=1). abspath() would
+    # turn that into $PWD/llvm-readelf which does not exist — keep bare names
+    # on PATH and only absolutize real paths.
+    _re = sys.argv[2]
+    readelf_path = _re if os.path.sep not in _re else os.path.abspath(_re)
     modules = sys.argv[3:]
 
     utils = Utils()
