@@ -19,6 +19,10 @@ dtbo-y += samsung/a21s/a21s_eur_open_w00_r01.dtbo
 dtbo-y += samsung/a21s/a21s_eur_open_w00_r06.dtbo
 dtbo-y += samsung/a21s/a21s_eur_open_w00_r02.dtbo
 
+# Galaxy A12 (a12s)
+dtbo-y += samsung/a12s/exynos850-a12s_w00_r00.dtbo
+dtbo-y += samsung/a12s/exynos850-a12s_w00_r01.dtbo
+
 targets += dtbs
 DTB_LIST  := $(dtb-y) $(dtbo-y)
 always    := $(DTB_LIST)
