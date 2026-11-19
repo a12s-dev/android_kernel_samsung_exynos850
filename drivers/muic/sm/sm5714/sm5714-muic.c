@@ -55,6 +55,7 @@
 #endif /* CONFIG_VBUS_NOTIFIER */
 
 #include <linux/muic/common/muic.h>
+#include <linux/muic/common/muic_interface.h>
 #include <linux/mfd/sm/sm5714/sm5714.h>
 #include <linux/mfd/sm/sm5714/sm5714-private.h>
 #include <linux/muic/sm/sm5714/sm5714-muic.h>
@@ -1562,7 +1563,7 @@ static void sm5714_muic_detect_dev(struct sm5714_muic_data *muic_data, int irq)
 			manualsw, afcctrl, vbvolt);
 
 #if IS_ENABLED(CONFIG_MUIC_SUPPORT_PDIC)
-	if (muic_data->pdata->opmode == OPMODE_PDIC) {
+	if (muic_data->opmode == OPMODE_PDIC) {
 		switch (muic_data->pdic_info_data.pdic_evt_rid) {
 		case RID_000K:
 			intr = MUIC_INTR_ATTACH;
@@ -2079,6 +2080,7 @@ static int sm5714_init_rev_info(struct sm5714_muic_data *muic_data)
 	return ret;
 }
 
+#undef REQUEST_IRQ
 #define REQUEST_IRQ(_irq, _dev_id, _name)				\
 do {									\
 	ret = request_threaded_irq(_irq, NULL, sm5714_muic_irq_thread,	\
@@ -2168,6 +2170,7 @@ static int sm5714_muic_irq_init(struct sm5714_muic_data *muic_data)
 	return ret;
 }
 
+#undef FREE_IRQ
 #define FREE_IRQ(_irq, _dev_id, _name)					\
 do {									\
 	if (_irq) {							\
@@ -2293,7 +2296,7 @@ static int sm5714_muic_probe(struct platform_device *pdev)
 #endif
 
 #if IS_ENABLED(CONFIG_MUIC_SUPPORT_PDIC)
-	muic_data->pdata->opmode = get_pdic_info() & 0xF;
+	muic_data->opmode = get_pdic_info() & 0xF;
 	muic_data->pdic_afc_state = SM5714_MUIC_AFC_NORMAL;
 	muic_data->pdic_afc_state_count = 0;
 	muic_data->need_to_path_open = false;
@@ -2347,12 +2350,8 @@ static int sm5714_muic_probe(struct platform_device *pdev)
 	muic_data->wake_lock = wakeup_source_register(NULL, "muic_wake");
 #endif
 
-#if IS_MODULE(CONFIG_MUIC_NOTIFIER)
-		ret = muic_data->pdata->init_gpio_cb(get_switch_sel());
-#else
 	if (muic_data->pdata->init_gpio_cb)
-		ret = muic_data->pdata->init_gpio_cb();
-#endif
+		ret = muic_data->pdata->init_gpio_cb(muic_data->pdata, get_switch_sel());
 	if (ret) {
 		pr_err("[%s:%s] failed to init gpio(%d)\n",
 				MUIC_DEV_NAME, __func__, ret);
@@ -2403,7 +2402,6 @@ static int sm5714_muic_probe(struct platform_device *pdev)
 		muic_data->pdata->afc_disable = false;
 	}
 
-	muic_data->pdata->muic_afc_set_voltage_cb = sm5714_muic_afc_set_voltage;
 	muic_data->pdata->muic_hv_charger_init_cb = sm5714_muic_hv_charger_init;
 
 	if (muic_data->pdata->init_switch_dev_cb)
@@ -2439,7 +2437,7 @@ static int sm5714_muic_probe(struct platform_device *pdev)
 	muic_data->vbus_state = STATUS_VBUS_UNKNOWN;
 #endif
 #if IS_ENABLED(CONFIG_MUIC_SUPPORT_PDIC)
-	if (muic_data->pdata->opmode & OPMODE_PDIC)
+	if (muic_data->opmode & OPMODE_PDIC)
 		sm5714_muic_register_pdic_notifier(muic_data);
 	else
 		pr_info("[%s:%s] OPMODE_MUIC, PDIC NOTIFIER is not used.\n",

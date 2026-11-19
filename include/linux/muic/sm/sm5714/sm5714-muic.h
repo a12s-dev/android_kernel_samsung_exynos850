@@ -257,6 +257,7 @@ struct sm5714_muic_data {
 	bool is_otg_test;
 	bool is_pdic_ready;
 	bool is_charger_ready;
+	int opmode;
 
 #if defined(CONFIG_USB_EXTERNAL_NOTIFY)
 	/* USB Notifier */
