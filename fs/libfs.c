@@ -18,10 +18,8 @@
 #include <linux/buffer_head.h> /* sync_mapping_buffers */
 #include <linux/unicode.h>
 #include <linux/fscrypt.h>
-
-#ifdef CONFIG_FSCRYPT_SDP
-#include "crypto/sdp/fscrypto_sdp_private.h"
-#endif
+#include <linux/fs_context.h>
+#include <linux/pseudo_fs.h>
 
 #include <linux/uaccess.h>
 
@@ -243,34 +241,22 @@ static const struct super_operations simple_super_operations = {
 	.statfs		= simple_statfs,
 };
 
-/*
- * Common helper for pseudo-filesystems (sockfs, pipefs, bdev - stuff that
- * will never be mountable)
- */
-struct dentry *mount_pseudo_xattr(struct file_system_type *fs_type, char *name,
-	const struct super_operations *ops, const struct xattr_handler **xattr,
-	const struct dentry_operations *dops, unsigned long magic)
+static int pseudo_fs_fill_super(struct super_block *s, struct fs_context *fc)
 {
-	struct super_block *s;
-	struct dentry *dentry;
+	struct pseudo_fs_context *ctx = fc->fs_private;
 	struct inode *root;
-	struct qstr d_name = QSTR_INIT(name, strlen(name));
-
-	s = sget_userns(fs_type, NULL, set_anon_super, SB_KERNMOUNT|SB_NOUSER,
-			&init_user_ns, NULL);
-	if (IS_ERR(s))
-		return ERR_CAST(s);
 
 	s->s_maxbytes = MAX_LFS_FILESIZE;
 	s->s_blocksize = PAGE_SIZE;
 	s->s_blocksize_bits = PAGE_SHIFT;
-	s->s_magic = magic;
-	s->s_op = ops ? ops : &simple_super_operations;
-	s->s_xattr = xattr;
+	s->s_magic = ctx->magic;
+	s->s_op = ctx->ops ?: &simple_super_operations;
+	s->s_xattr = ctx->xattr;
 	s->s_time_gran = 1;
 	root = new_inode(s);
 	if (!root)
-		goto Enomem;
+		return -ENOMEM;
+
 	/*
 	 * since this is the first inode, make it number 1. New inodes created
 	 * after this must take care not to collide with it (by passing
@@ -279,22 +265,48 @@ struct dentry *mount_pseudo_xattr(struct file_system_type *fs_type, char *name,
 	root->i_ino = 1;
 	root->i_mode = S_IFDIR | S_IRUSR | S_IWUSR;
 	root->i_atime = root->i_mtime = root->i_ctime = current_time(root);
-	dentry = __d_alloc(s, &d_name);
-	if (!dentry) {
-		iput(root);
-		goto Enomem;
-	}
-	d_instantiate(dentry, root);
-	s->s_root = dentry;
-	s->s_d_op = dops;
-	s->s_flags |= SB_ACTIVE;
-	return dget(s->s_root);
-
-Enomem:
-	deactivate_locked_super(s);
-	return ERR_PTR(-ENOMEM);
+	s->s_root = d_make_root(root);
+	if (!s->s_root)
+		return -ENOMEM;
+	s->s_d_op = ctx->dops;
+	return 0;
 }
-EXPORT_SYMBOL(mount_pseudo_xattr);
+
+static int pseudo_fs_get_tree(struct fs_context *fc)
+{
+	return get_tree_nodev(fc, pseudo_fs_fill_super);
+}
+
+static void pseudo_fs_free(struct fs_context *fc)
+{
+	kfree(fc->fs_private);
+}
+
+static const struct fs_context_operations pseudo_fs_context_ops = {
+	.free		= pseudo_fs_free,
+	.get_tree	= pseudo_fs_get_tree,
+};
+
+/*
+ * Common helper for pseudo-filesystems (sockfs, pipefs, bdev - stuff that
+ * will never be mountable)
+ */
+struct pseudo_fs_context *init_pseudo(struct fs_context *fc,
+					unsigned long magic)
+{
+	struct pseudo_fs_context *ctx;
+
+	ctx = kzalloc(sizeof(struct pseudo_fs_context), GFP_KERNEL);
+	if (likely(ctx)) {
+		ctx->magic = magic;
+		fc->fs_private = ctx;
+		fc->ops = &pseudo_fs_context_ops;
+		fc->sb_flags |= SB_NOUSER;
+		fc->global = true;
+	}
+	return ctx;
+}
+EXPORT_SYMBOL(init_pseudo);
 
 int simple_open(struct inode *inode, struct file *file)
 {
@@ -870,11 +882,11 @@ out:
 EXPORT_SYMBOL_GPL(simple_attr_read);
 
 /* interpret the buffer as a number to call the set function with */
-ssize_t simple_attr_write(struct file *file, const char __user *buf,
-			  size_t len, loff_t *ppos)
+static ssize_t simple_attr_write_xsigned(struct file *file, const char __user *buf,
+			  size_t len, loff_t *ppos, bool is_signed)
 {
 	struct simple_attr *attr;
-	u64 val;
+	unsigned long long val;
 	size_t size;
 	ssize_t ret;
 
@@ -892,7 +904,12 @@ ssize_t simple_attr_write(struct file *file, const char __user *buf,
 		goto out;
 
 	attr->set_buf[size] = '\0';
-	val = simple_strtoll(attr->set_buf, NULL, 0);
+	if (is_signed)
+		ret = kstrtoll(attr->set_buf, 0, &val);
+	else
+		ret = kstrtoull(attr->set_buf, 0, &val);
+	if (ret)
+		goto out;
 	ret = attr->set(attr->data, val);
 	if (ret == 0)
 		ret = len; /* on success, claim we got the whole input */
@@ -900,7 +917,20 @@ out:
 	mutex_unlock(&attr->mutex);
 	return ret;
 }
+
+ssize_t simple_attr_write(struct file *file, const char __user *buf,
+			  size_t len, loff_t *ppos)
+{
+	return simple_attr_write_xsigned(file, buf, len, ppos, false);
+}
 EXPORT_SYMBOL_GPL(simple_attr_write);
+
+ssize_t simple_attr_write_signed(struct file *file, const char __user *buf,
+			  size_t len, loff_t *ppos)
+{
+	return simple_attr_write_xsigned(file, buf, len, ppos, true);
+}
+EXPORT_SYMBOL_GPL(simple_attr_write_signed);
 
 /**
  * generic_fh_to_dentry - generic helper for the fh_to_dentry export operation
@@ -1127,11 +1157,6 @@ static int anon_set_page_dirty(struct page *page)
 	return 0;
 };
 
-/*
- * A single inode exists for all anon_inode files. Contrary to pipes,
- * anon_inode inodes have no associated per-instance data, so we need
- * only allocate one of them.
- */
 struct inode *alloc_anon_inode(struct super_block *s)
 {
 	static const struct address_space_operations anon_aops = {
@@ -1267,17 +1292,6 @@ bool is_empty_dir_inode(struct inode *inode)
 		(inode->i_op == &empty_dir_inode_operations);
 }
 
-#ifdef CONFIG_FSCRYPT_SDP
-static int fscrypt_sdp_d_delete(const struct dentry *dentry)
-{
-	return fscrypt_sdp_d_delete_wrapper(dentry);
-}
-
-static const struct dentry_operations sdp_dentry_ops = {
-	.d_delete	= fscrypt_sdp_d_delete,
-};
-#endif
-
 #ifdef CONFIG_UNICODE
 bool needs_casefold(const struct inode *dir)
 {
@@ -1355,18 +1369,12 @@ EXPORT_SYMBOL(generic_ci_d_hash);
 static const struct dentry_operations generic_ci_dentry_ops = {
 	.d_hash = generic_ci_d_hash,
 	.d_compare = generic_ci_d_compare,
-#ifdef CONFIG_FSCRYPT_SDP
-	.d_delete	= fscrypt_sdp_d_delete,
-#endif
 };
 #endif
 
 #ifdef CONFIG_FS_ENCRYPTION
 static const struct dentry_operations generic_encrypted_dentry_ops = {
 	.d_revalidate = fscrypt_d_revalidate,
-#ifdef CONFIG_FSCRYPT_SDP
-	.d_delete	= fscrypt_sdp_d_delete,
-#endif
 };
 #endif
 
@@ -1375,9 +1383,6 @@ static const struct dentry_operations generic_encrypted_ci_dentry_ops = {
 	.d_hash = generic_ci_d_hash,
 	.d_compare = generic_ci_d_compare,
 	.d_revalidate = fscrypt_d_revalidate,
-#ifdef CONFIG_FSCRYPT_SDP
-	.d_delete	= fscrypt_sdp_d_delete,
-#endif
 };
 #endif
 
@@ -1406,12 +1411,6 @@ void generic_set_encrypted_ci_d_ops(struct inode *dir, struct dentry *dentry)
 #ifdef CONFIG_UNICODE
 	if (dir->i_sb->s_encoding) {
 		d_set_d_op(dentry, &generic_ci_dentry_ops);
-		return;
-	}
-#endif
-#ifdef CONFIG_FSCRYPT_SDP
-	if (dir->i_crypt_info) {
-		d_set_d_op(dentry, &sdp_dentry_ops);
 		return;
 	}
 #endif

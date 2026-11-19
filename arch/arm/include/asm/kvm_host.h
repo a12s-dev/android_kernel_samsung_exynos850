@@ -304,6 +304,7 @@ static inline void kvm_arch_sched_in(struct kvm_vcpu *vcpu, int cpu) {}
 static inline void kvm_arch_vcpu_block_finish(struct kvm_vcpu *vcpu) {}
 
 static inline void kvm_arm_init_debug(void) {}
+static inline void kvm_arm_vcpu_init_debug(struct kvm_vcpu *vcpu) {}
 static inline void kvm_arm_setup_debug(struct kvm_vcpu *vcpu) {}
 static inline void kvm_arm_clear_debug(struct kvm_vcpu *vcpu) {}
 static inline void kvm_arm_reset_debug_ptr(struct kvm_vcpu *vcpu) {}
@@ -365,13 +366,12 @@ static inline void kvm_vcpu_put_sysregs(struct kvm_vcpu *vcpu) {}
 struct kvm *kvm_arch_alloc_vm(void);
 void kvm_arch_free_vm(struct kvm *kvm);
 
+#define kvm_arm_vcpu_loaded(vcpu)	(false)
 
 static inline int kvm_arm_get_spectre_bhb_state(void)
 {
 	/* 32bit guests don't need firmware for this */
 	return SPECTRE_VULNERABLE; /* aka SMCCC_RET_NOT_SUPPORTED */
 }
-
-#define kvm_arm_vcpu_loaded(vcpu)	(false)
 
 #endif /* __ARM_KVM_HOST_H__ */

@@ -22,8 +22,6 @@
 #endif
 #ifdef CONFIG_SENSORS_SSP
 #include "../../sensorhub/ssp_platform.h"
-#elif defined(CONFIG_SHUB)
-#include "../../sensorhub/vendor/shub_helper.h"
 #endif
 
 #define NUM_OF_GPR (17)
@@ -176,8 +174,6 @@ void chub_dbg_dump_hw(struct contexthub_ipc_info *ipc, enum chub_err_type reason
 #endif
 #ifdef CONFIG_SENSORS_SSP
 	ssp_dump_write_file(&p_dbg_dump->sram[p_dbg_dump->sram_start], ipc_get_chub_mem_size(), reason);
-#elif defined(CONFIG_SHUB)
-	shub_dump_write_file(&p_dbg_dump->sram[p_dbg_dump->sram_start], ipc_get_chub_mem_size(), reason);
 #endif
 
 #ifdef SUPPORT_DUMP_ON_DRIVER
@@ -411,8 +407,9 @@ static ssize_t chub_ipc_store(struct device *dev,
 	}
 
 	ret = contexthub_ipc_read(ipc, output, 0, IPC_MAX_TIMEOUT);
-	if (count != ret)
+	if (count != ret) {
 		dev_info(ipc->dev, "%s: fail to read ret:%d\n", __func__, ret);
+	}
 
 	if (strncmp(input, output, count)) {
 		dev_info(ipc->dev, "%s: fail to compare input/output\n", __func__);
@@ -545,7 +542,7 @@ static struct device_attribute attributes[] = {
 	__ATTR(utc, 0664, chub_utc_show, chub_utc_store),
 	__ATTR(ipc_test, 0220, NULL, chub_ipc_store),
 	__ATTR(alive, 0440, chub_alive_show, NULL),
-	__ATTR(wakeup, 0220, NULL, chub_wakeup_store),
+	__ATTR(wakeup_debug, 0220, NULL, chub_wakeup_store),
 	__ATTR(loglevel, 0664, chub_loglevel_show, chub_loglevel_store),
 };
 

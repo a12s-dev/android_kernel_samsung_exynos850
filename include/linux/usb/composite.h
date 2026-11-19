@@ -44,7 +44,6 @@
 
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 #include <linux/usb_notify.h>
-#include <linux/gpio.h>
 #endif
 
 /*
@@ -211,11 +210,7 @@ struct usb_function {
 	struct usb_descriptor_header	**ssp_descriptors;
 
 	struct usb_configuration	*config;
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
-	int (*set_intf_num)(struct usb_function *f,
-			int intf_num, int index_num);
-	int (*set_config_desc)(int conf_num);
-#endif
+
 	struct usb_os_desc_table	*os_desc_table;
 	unsigned			os_desc_n;
 
@@ -543,8 +538,8 @@ struct usb_composite_dev {
 	 */
 	bool				mute_switch;
 	bool				force_disconnect;
-	bool				cleanup_flag;
 #endif
+
 	/* protects deactivations and delayed_status counts*/
 	spinlock_t			lock;
 

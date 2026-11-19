@@ -790,7 +790,7 @@ config BALANCE_ANON_FILE_RECLAIM
 
 config FAULT_AROUND_4KB
 	bool "Fault around bytes 4KB"
-	default n
+	default y
 	help
 	  Reduce fault around bytes to 4KB
 
@@ -803,7 +803,7 @@ config KSWAPD_CPU
 
 config MMAP_READAROUND_LIMIT
 	int "Limit mmap readaround upperbound"
-	default 0
+	default 16
 	help
 	  Inappropriate mmap readaround size can hurt device performance
 	  during the sluggish situation. Add the hard upper-limit for
@@ -812,7 +812,7 @@ config MMAP_READAROUND_LIMIT
 config SWAP_ENABLE_READAHEAD
 	bool "Enable readahead on page swap in"
 	depends on SWAP
-	default y
+	default n
 	help
 	  When a page fault occurs, adjacent pages are also paged in
           expecting those pages will be used in near future.
@@ -845,43 +845,6 @@ config GUP_BENCHMARK
 config ARCH_HAS_PTE_SPECIAL
 	bool
 
-config HPA
-	bool "High-order Pages Allocator"
-	select CMA
-	help
-	  Turns on High-order Pages Allocator based on page migration.
-
-config PAGE_STEAL
-	bool "Fast page reclamation and migration"
-	depends on MIGRATION
-	default n
-	help
-	  Used by HPA and memory-hotplug for faster page reclamation than page
-	  migration and alloc_contig_range.
-
-config ARCH_SUPPORTS_SPECULATIVE_PAGE_FAULT
-	bool "Arch supports speculative page fault"
-	default n
-
-config SPECULATIVE_PAGE_FAULT
-       bool "Speculative page faults"
-       default y
-       depends on ARCH_SUPPORTS_SPECULATIVE_PAGE_FAULT
-       depends on MMU && SMP
-       help
-         Try to handle user space page faults without holding the mmap_sem.
-
-	 This should allow better concurrency for massively threaded process
-	 since the page fault handler will not wait for other threads memory
-	 layout change to be done, assuming that this change is done in another
-	 part of the process's memory space. This type of page fault is named
-	 speculative page fault.
-
-	 If the speculative page fault fails because of a concurrency is
-	 detected or because underlying PMD or PTE tables are not yet
-	 allocating, it is failing its processing and a classic page fault
-	 is then tried.
-
 config LARGE_DIRTY_BUFFER
 	bool "Use large dirty_threshold value by enabling dirty_ratio"
 	default n
@@ -898,6 +861,20 @@ config MAX_DIRTY_THRESH_PAGES
 	  This value is the upper bound of VM dirty-thresh. (0 means no limit.)
 	  It is only effective when dirty_ratio is used.
 	  (Setting dirty_bytes disables this option.)
+
+config HPA
+	bool "High-order Pages Allocator"
+	select CMA
+	help
+	  Turns on High-order Pages Allocator based on page migration.
+
+config PAGE_STEAL
+	bool "Fast page reclamation and migration"
+	depends on MIGRATION
+	default n
+	help
+	  Used by HPA and memory-hotplug for faster page reclamation than page
+	  migration and alloc_contig_range.
 
 endmenu
 

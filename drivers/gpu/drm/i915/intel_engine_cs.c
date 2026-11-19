@@ -463,7 +463,7 @@ static void intel_engine_init_execlist(struct intel_engine_cs *engine)
 	struct intel_engine_execlists * const execlists = &engine->execlists;
 
 	execlists->port_mask = 1;
-	BUILD_BUG_ON_NOT_POWER_OF_2(execlists_num_ports(execlists));
+	GEM_BUG_ON(!is_power_of_2(execlists_num_ports(execlists)));
 	GEM_BUG_ON(execlists_num_ports(execlists) > EXECLIST_MAX_PORTS);
 
 	execlists->queue_priority = INT_MIN;
@@ -1243,7 +1243,7 @@ static void print_request(struct drm_printer *m,
 
 	x = print_sched_attr(rq->i915, &rq->sched.attr, buf, x, sizeof(buf));
 
-	drm_printf(m, "%s%x%s [%llx:%x]%s @ %dms: %s\n",
+	drm_printf(m, "%s%x%s [%llx:%llx]%s @ %dms: %s\n",
 		   prefix,
 		   rq->global_seqno,
 		   i915_request_completed(rq) ? "!" : "",

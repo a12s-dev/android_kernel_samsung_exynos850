@@ -1,11 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * kernel/power/suspend.c - Suspend to RAM and standby functionality.
  *
  * Copyright (c) 2003 Patrick Mochel
  * Copyright (c) 2003 Open Source Development Lab
  * Copyright (c) 2009 Rafael J. Wysocki <rjw@sisk.pl>, Novell Inc.
- *
- * This file is released under the GPLv2.
  */
 
 #define pr_fmt(fmt) "PM: " fmt
@@ -33,11 +32,12 @@
 #include <linux/compiler.h>
 #include <linux/moduleparam.h>
 #include <linux/wakeup_reason.h>
-#ifdef CONFIG_SEC_PM_DEBUG
-#include <linux/rtc.h>
-#include <linux/regulator/machine.h>
-#endif
 #include <linux/memory_hotplug.h>
+#ifdef CONFIG_SEC_PM_DEBUG
+#include <linux/regulator/machine.h>
+#include <linux/rtc.h>
+#endif /* CONFIG_SEC_PM_DEBUG */
+#include <linux/sec_debug.h>
 
 #include "power.h"
 
@@ -214,6 +214,7 @@ static int __init mem_sleep_default_setup(char *str)
 		if (mem_sleep_labels[state] &&
 		    !strcmp(str, mem_sleep_labels[state])) {
 			mem_sleep_default = state;
+			mem_sleep_current = state;
 			break;
 		}
 
@@ -385,25 +386,10 @@ static int suspend_prepare(suspend_state_t state)
 			log_suspend_abort_reason("PM_SUSPEND_PREPARE failed: "
 					"%ps (%d)", callback, nr_calls);
 		}
-#endif
+#endif /* CONFIG_SEC_PM_DEBUG */		
 		nr_calls--;
 		goto Finish;
 	}
-
-#ifndef CONFIG_SUSPEND_SKIP_SYNC
-	trace_suspend_resume(TPS("sync_filesystems"), 0, true);
-	dbg_snapshot_suspend("sync_filesystems", ksys_sync, NULL, state, DSS_FLAG_IN);
-	pr_info("Syncing filesystems ... ");
-	if (intr_sync(NULL)) {
-		printk("canceled.\n");
-		trace_suspend_resume(TPS("sync_filesystems"), 0, false);
-		error = -EBUSY;
-		goto Finish;
-	}
-	pr_cont("done.\n");
-	dbg_snapshot_suspend("sync_filesystems", ksys_sync, NULL, state, DSS_FLAG_OUT);
-	trace_suspend_resume(TPS("sync_filesystems"), 0, false);
-#endif
 
 	trace_suspend_resume(TPS("freeze_processes"), 0, true);
 	dbg_snapshot_suspend("freeze_processes", suspend_freeze_processes,
@@ -420,7 +406,7 @@ static int suspend_prepare(suspend_state_t state)
 	dpm_save_failed_step(SUSPEND_FREEZE);
 #ifdef CONFIG_SEC_PM_DEBUG
 	log_suspend_abort_reason("Freezing processes failed: %d", error);
-#endif
+#endif /* CONFIG_SEC_PM_DEBUG */
  Finish:
 	mem_stop_offline();
 	__pm_notifier_call_chain(PM_POST_SUSPEND, nr_calls, NULL);
@@ -467,6 +453,7 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 #ifdef CONFIG_SEC_PM_DEBUG
 	regulator_show_enabled();
 #endif /* CONFIG_SEC_PM_DEBUG */
+
 	error = platform_suspend_prepare_late(state);
 	if (error)
 		goto Devices_early_resume;
@@ -649,6 +636,16 @@ static int enter_state(suspend_state_t state)
 	if (state == PM_SUSPEND_TO_IDLE)
 		s2idle_begin();
 
+#ifndef CONFIG_SUSPEND_SKIP_SYNC
+	trace_suspend_resume(TPS("sync_filesystems"), 0, true);
+	dbg_snapshot_suspend("sync_filesystems", ksys_sync, NULL, state, DSS_FLAG_IN);
+	pr_info("Syncing filesystems ... ");
+	ksys_sync();
+	pr_cont("done.\n");
+	dbg_snapshot_suspend("sync_filesystems", ksys_sync, NULL, state, DSS_FLAG_OUT);
+	trace_suspend_resume(TPS("sync_filesystems"), 0, false);
+#endif
+
 	pm_pr_dbg("Preparing system for sleep (%s)\n", mem_sleep_labels[state]);
 	pm_suspend_clear_flags();
 	error = suspend_prepare(state);
@@ -706,7 +703,10 @@ int pm_suspend(suspend_state_t state)
 #else
 	pr_info("suspend entry (%s)\n", mem_sleep_labels[state]);
 #endif
+
+	secdbg_base_set_task_in_pm_suspend((uint64_t)current);
 	error = enter_state(state);
+	secdbg_base_set_task_in_pm_suspend(0);
 	if (error) {
 		suspend_stats.fail++;
 		dpm_save_failed_errno(error);

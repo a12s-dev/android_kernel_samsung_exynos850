@@ -15,6 +15,14 @@ obj-$(CONFIG_SOC_EXYNOS5420)	+= clk-exynos5-subcmu.o
 obj-$(CONFIG_EXYNOS_AUDSS_CLK_CON) += clk-exynos-audss.o
 ifeq ($(CONFIG_COMPOSITE_CLK_SAMSUNG), y)
 	obj-y				+= composite.o
+	obj-$(CONFIG_SOC_EXYNOS9610)	+= clk-exynos9610.o
+	obj-$(CONFIG_SOC_EXYNOS9630)	+= clk-exynos9630.o
+	obj-$(CONFIG_SOC_EXYNOS9820)	+= clk-exynos9820.o
+ifeq ($(CONFIG_SOC_EXYNOS9830_EVT0), y)
+	obj-$(CONFIG_SOC_EXYNOS9830_EVT0)	+= clk-exynos9830_evt0.o
+else
+	obj-$(CONFIG_SOC_EXYNOS9830)	+= clk-exynos9830.o
+endif
 	obj-$(CONFIG_SOC_EXYNOS3830)	+= clk-exynos3830.o
 else
 	obj-$(CONFIG_COMMON_CLK)	+= clk.o clk-pll.o clk-cpu.o

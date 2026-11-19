@@ -35,6 +35,7 @@ config PARISC
 	select GENERIC_STRNCPY_FROM_USER
 	select SYSCTL_ARCH_UNALIGN_ALLOW
 	select SYSCTL_EXCEPTION_TRACE
+	select ARCH_DISCARD_MEMBLOCK
 	select HAVE_MOD_ARCH_SPECIFIC
 	select VIRT_TO_BUS
 	select MODULES_USE_ELF_RELA
@@ -138,7 +139,7 @@ choice
 
 config PA7000
 	bool "PA7000/PA7100"
-	---help---
+	help
 	  This is the processor type of your CPU.  This information is
 	  used for optimizing purposes.  In order to compile a kernel
 	  that can run on all 32-bit PA CPUs (albeit not optimally fast),
@@ -266,7 +267,7 @@ config PARISC_SELF_EXTRACT
 
 config SMP
 	bool "Symmetric multi-processing support"
-	---help---
+	help
 	  This enables support for systems with more than one CPU. If you have
 	  a system with only one CPU, say N. If you have a system with more
 	  than one CPU, say Y.
@@ -311,21 +312,16 @@ config ARCH_SELECT_MEMORY_MODEL
 	def_bool y
 	depends on 64BIT
 
-config ARCH_DISCONTIGMEM_ENABLE
+config ARCH_SPARSEMEM_ENABLE
 	def_bool y
 	depends on 64BIT
 
 config ARCH_FLATMEM_ENABLE
 	def_bool y
 
-config ARCH_DISCONTIGMEM_DEFAULT
+config ARCH_SPARSEMEM_DEFAULT
 	def_bool y
-	depends on ARCH_DISCONTIGMEM_ENABLE
-
-config NODES_SHIFT
-	int
-	default "3"
-	depends on NEED_MULTIPLE_NODES
+	depends on ARCH_SPARSEMEM_ENABLE
 
 source "kernel/Kconfig.hz"
 
@@ -355,7 +351,7 @@ source "drivers/parisc/Kconfig"
 config SECCOMP
 	def_bool y
 	prompt "Enable seccomp to safely compute untrusted bytecode"
-	---help---
+	help
 	  This kernel feature is useful for number crunching applications
 	  that may need to compute untrusted bytecode during their
 	  execution. By using pipes or other transports made available to

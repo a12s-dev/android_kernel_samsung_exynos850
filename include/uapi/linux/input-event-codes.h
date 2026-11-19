@@ -278,7 +278,8 @@
 #define KEY_PAUSECD		201
 #define KEY_PROG3		202
 #define KEY_PROG4		203
-#define KEY_DASHBOARD		204	/* AL Dashboard */
+#define KEY_ALL_APPLICATIONS	204	/* AC Desktop Show All Applications */
+#define KEY_DASHBOARD		KEY_ALL_APPLICATIONS
 #define KEY_SUSPEND		205
 #define KEY_CLOSE		206	/* AC Close */
 #define KEY_PLAY		207
@@ -336,8 +337,6 @@
 #define KEY_RFKILL		247	/* Key that controls all radios */
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
-
-#define KEY_HOT			252	/* Intelligence Key */
 
 #define KEY_RECENT		254
 /* Code 255 is reserved for special needs of AT keyboard driver */
@@ -604,6 +603,7 @@
 
 #define KEY_ALS_TOGGLE		0x230	/* Ambient light sensor */
 #define KEY_ROTATE_LOCK_TOGGLE	0x231	/* Display rotation lock */
+#define KEY_REFRESH_RATE_TOGGLE	0x232	/* Display refresh rate toggle */
 
 #define KEY_BUTTONCONFIG		0x240	/* AL Button Configuration */
 #define KEY_TASKMANAGER		0x241	/* AL Task/Project Manager */
@@ -657,7 +657,7 @@
 #define KEY_ONSCREEN_KEYBOARD		0x278
 
 #define KEY_DEX_ON			0x2bd
-#define KEY_INT_CANCEL		0x2be	/* for touch event skip */
+#define KEY_INT_CANCEL			0x2be	/* for touch event skip */
 #define KEY_WINK			0x2bf    /* Intelligence Key */
 
 #define BTN_TRIGGER_HAPPY		0x2c0
@@ -818,7 +818,7 @@
 #define SW_FLIP                 0x15    /* set = flip cover */
 #define SW_CERTIFYHALL          0x1b    /* set = certify_hall... */
 
-#define SW_PEN_INSERTED		0x1a  /* set = pen inserted */
+#define SW_PEN_INSERTED		0x0f  /* set = pen inserted */
 #define SW_MACHINE_COVER	0x10  /* set = cover closed */
 #define SW_HPHL_OVERCURRENT	0x11  /* set = over current on left hph */
 #define SW_HPHR_OVERCURRENT	0x12  /* set = over current on right hph */

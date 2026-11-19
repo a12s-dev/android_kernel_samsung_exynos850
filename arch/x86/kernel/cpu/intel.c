@@ -11,7 +11,7 @@
 #include <linux/uaccess.h>
 
 #include <asm/cpufeature.h>
-#include <asm/pgtable.h>
+#include <linux/pgtable.h>
 #include <asm/msr.h>
 #include <asm/bugs.h>
 #include <asm/cpu.h>
@@ -71,7 +71,7 @@ static bool ring3mwait_disabled __read_mostly;
 static int __init ring3mwait_disable(char *__unused)
 {
 	ring3mwait_disabled = true;
-	return 0;
+	return 1;
 }
 __setup("ring3mwait=disable", ring3mwait_disable);
 

@@ -134,14 +134,10 @@ static struct sysrq_key_op sysrq_unraw_op = {
 #define sysrq_unraw_op (*(struct sysrq_key_op *)NULL)
 #endif /* CONFIG_VT */
 
-extern  void secdbg_base_set_sysrq_crash(struct task_struct *task);
-
 static void sysrq_handle_crash(int key)
 {
 	/* release the RCU read lock before crashing */
 	rcu_read_unlock();
-
-	secdbg_base_set_sysrq_crash(current);
 
 	panic("sysrq triggered crash\n");
 }

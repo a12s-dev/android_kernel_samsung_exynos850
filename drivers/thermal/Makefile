@@ -63,3 +63,4 @@ obj-$(CONFIG_ZX2967_THERMAL)	+= zx2967_thermal.o
 obj-$(CONFIG_UNIPHIER_THERMAL)	+= uniphier_thermal.o
 
 obj-$(CONFIG_GPU_THERMAL)	+= gpu_cooling.o
+obj-$(CONFIG_ISP_THERMAL)	+= isp_cooling.o

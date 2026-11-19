@@ -24,6 +24,7 @@ mali_kbase-y += \
     mmu/mali_kbase_mmu_mode_aarch64.o
 
 ifeq ($(CONFIG_MALI_CSF_SUPPORT),y)
+    mali_kbase-y += mmu/backend/mali_kbase_mmu_csf.o
 else
     mali_kbase-y += mmu/backend/mali_kbase_mmu_jm.o
 endif

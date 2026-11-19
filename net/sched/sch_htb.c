@@ -1027,7 +1027,8 @@ static int htb_init(struct Qdisc *sch, struct nlattr *opt,
 	if (err)
 		return err;
 
-	err = nla_parse_nested(tb, TCA_HTB_MAX, opt, htb_policy, NULL);
+	err = nla_parse_nested_deprecated(tb, TCA_HTB_MAX, opt, htb_policy,
+					  NULL);
 	if (err < 0)
 		return err;
 
@@ -1072,7 +1073,7 @@ static int htb_dump(struct Qdisc *sch, struct sk_buff *skb)
 	gopt.defcls = q->defcls;
 	gopt.debug = 0;
 
-	nest = nla_nest_start(skb, TCA_OPTIONS);
+	nest = nla_nest_start_noflag(skb, TCA_OPTIONS);
 	if (nest == NULL)
 		goto nla_put_failure;
 	if (nla_put(skb, TCA_HTB_INIT, sizeof(gopt), &gopt) ||
@@ -1101,7 +1102,7 @@ static int htb_dump_class(struct Qdisc *sch, unsigned long arg,
 	if (!cl->level && cl->un.leaf.q)
 		tcm->tcm_info = cl->un.leaf.q->handle;
 
-	nest = nla_nest_start(skb, TCA_OPTIONS);
+	nest = nla_nest_start_noflag(skb, TCA_OPTIONS);
 	if (nest == NULL)
 		goto nla_put_failure;
 
@@ -1224,7 +1225,7 @@ static void htb_destroy_class(struct Qdisc *sch, struct htb_class *cl)
 {
 	if (!cl->level) {
 		WARN_ON(!cl->un.leaf.q);
-		qdisc_destroy(cl->un.leaf.q);
+		qdisc_put(cl->un.leaf.q);
 	}
 	gen_kill_estimator(&cl->rate_est);
 	tcf_block_put(cl->block);
@@ -1331,7 +1332,8 @@ static int htb_change_class(struct Qdisc *sch, u32 classid,
 	if (!opt)
 		goto failure;
 
-	err = nla_parse_nested(tb, TCA_HTB_MAX, opt, htb_policy, NULL);
+	err = nla_parse_nested_deprecated(tb, TCA_HTB_MAX, opt, htb_policy,
+					  NULL);
 	if (err < 0)
 		goto failure;
 
@@ -1425,7 +1427,7 @@ static int htb_change_class(struct Qdisc *sch, u32 classid,
 			/* turn parent into inner node */
 			qdisc_reset(parent->un.leaf.q);
 			qdisc_tree_reduce_backlog(parent->un.leaf.q, qlen, backlog);
-			qdisc_destroy(parent->un.leaf.q);
+			qdisc_put(parent->un.leaf.q);
 			if (parent->prio_activity)
 				htb_deactivate(q, parent);
 

@@ -22,6 +22,7 @@ ifeq ($(CONFIG_SCSC_WLAN_HIP4_PROFILING),y)
 scsc_wlan-$(CONFIG_SCSC_WLAN) += hip4_sampler.o
 endif
 
+scsc_wlan-$(CONFIG_SCSC_SMAPPER) += hip4_smapper.o
 
 # Upper driver
 scsc_wlan-$(CONFIG_SCSC_WLAN) += dev.o
@@ -74,10 +75,14 @@ scsc_wifilogger-y += scsc_wifilogger_api.o \
                      scsc_wifilogger_ring_pktfate.o
 
 scsc_wifilogger-$(CONFIG_SCSC_WIFILOGGER_DEBUGFS) += scsc_wifilogger_debugfs.o
+scsc_wifilogger-$(CONFIG_SCSC_WIFILOGGER_TEST) += scsc_wifilogger_ring_test.o
 
 # ----------------------------------------------------------------------------
 # ACM
 # ----------------------------------------------------------------------------
+ifeq ($(CONFIG_SCSC_WLAN_ACM_API),y)
+scsc_wlan-$(CONFIG_SCSC_WLAN) += acm_api.o
+endif
 
 # ----------------------------------------------------------------------------
 # Building for Hardware
@@ -93,6 +98,9 @@ ifeq ($(CONFIG_SCSC_LOG_COLLECTION), m)
 ccflags-y += -DCONFIG_SCSC_LOG_COLLECTION
 endif
 
+ifeq ($(CONFIG_SCSC_WLAN_KIC_OPS),y)
+scsc_wlan-$(CONFIG_SCSC_WLAN) += kic.o
+endif
 ccflags-$(CONFIG_SCSC_WLAN_KIC_OPS) += -DCONFIG_SCSC_WLAN_KIC_OPS
 
 ifeq ($(CONFIG_SCSC_WLAN_GSCAN_ENABLE),y)
@@ -101,6 +109,7 @@ ccflags-y += -DCONFIG_SCSC_WLAN_GSCAN_ENABLE
 endif
 ifeq ($(CONFIG_SCSC_WIFI_NAN_ENABLE),y)
 scsc_wlan-$(CONFIG_SCSC_WLAN) += nl80211_vendor_nan.o
+scsc_wlan-$(CONFIG_SCSC_WLAN) += mlme_nan.o
 endif
 
 ifeq ($(CONFIG_SCSC_WLAN_KEY_MGMT_OFFLOAD),y)

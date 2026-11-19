@@ -21,7 +21,7 @@
 #include <asm/bootinfo.h>
 #include <asm/hazards.h>
 #include <asm/mmu_context.h>
-#include <asm/pgtable.h>
+#include <linux/pgtable.h>
 #include <asm/tlb.h>
 #include <asm/tlbmisc.h>
 
@@ -424,6 +424,7 @@ int has_transparent_hugepage(void)
 	}
 	return mask == PM_HUGE_MASK;
 }
+EXPORT_SYMBOL(has_transparent_hugepage);
 
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE  */
 

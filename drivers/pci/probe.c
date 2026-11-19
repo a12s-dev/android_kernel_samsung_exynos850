@@ -616,7 +616,7 @@ const unsigned char pcie_link_speed[] = {
 	PCIE_SPEED_5_0GT,		/* 2 */
 	PCIE_SPEED_8_0GT,		/* 3 */
 	PCIE_SPEED_16_0GT,		/* 4 */
-	PCI_SPEED_UNKNOWN,		/* 5 */
+	PCIE_SPEED_32_0GT,		/* 5 */
 	PCI_SPEED_UNKNOWN,		/* 6 */
 	PCI_SPEED_UNKNOWN,		/* 7 */
 	PCI_SPEED_UNKNOWN,		/* 8 */
@@ -1598,12 +1598,9 @@ int pci_setup_device(struct pci_dev *dev)
 	set_pcie_port_type(dev);
 
 	pci_dev_assign_slot(dev);
-
-	/*
-	 * Assume 32-bit PCI; let 64-bit PCI cards (which are far rarer)
-	 * set this higher, assuming the system even supports it.
-	 */
-	dev->dma_mask = 0xffffffff;
+	/* Assume 32-bit PCI; let 64-bit PCI cards (which are far rarer)
+	   set this higher, assuming the system even supports it.  */
+	dev->dma_mask = DMA_BIT_MASK(36);
 
 	dev_set_name(&dev->dev, "%04x:%02x:%02x.%d", pci_domain_nr(dev->bus),
 		     dev->bus->number, PCI_SLOT(dev->devfn),
@@ -2307,6 +2304,7 @@ static struct pci_dev *pci_scan_device(struct pci_bus *bus, int devfn)
 	pci_set_of_node(dev);
 
 	if (pci_setup_device(dev)) {
+		pci_release_of_node(dev);
 		pci_bus_put(dev->bus);
 		kfree(dev);
 		return NULL;
@@ -2431,10 +2429,10 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	set_dev_node(&dev->dev, pcibus_to_node(bus));
 	dev->dev.dma_mask = &dev->dma_mask;
 	dev->dev.dma_parms = &dev->dma_parms;
-	dev->dev.coherent_dma_mask = 0xffffffffull;
+	dev->dev.coherent_dma_mask = DMA_BIT_MASK(36);
 
 	pci_set_dma_max_seg_size(dev, 65536);
-	pci_set_dma_seg_boundary(dev, 0xffffffff);
+	pci_set_dma_seg_boundary(dev, DMA_BIT_MASK(36));
 
 	/* Fix up broken headers */
 	pci_fixup_device(pci_fixup_header, dev);

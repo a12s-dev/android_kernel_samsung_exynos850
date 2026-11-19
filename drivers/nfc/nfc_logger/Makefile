@@ -5,3 +5,4 @@
 # Licensed under GPLv2
 #
 
+obj-$(CONFIG_SEC_NFC_LOGGER) += nfc_logger.o

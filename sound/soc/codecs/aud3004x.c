@@ -42,16 +42,9 @@
 #include "../samsung/abox/abox.h"
 
 #include "aud3004x.h"
-
-#ifdef CONFIG_SND_SOC_AUD3004X_5PIN
 #include "aud3004x-5pin.h"
-#endif
 
-#ifdef CONFIG_SND_SOC_AUD3004X_6PIN
-#include "aud3004x-6pin.h"
-#endif
-
-#define AUD3004X_CODEC_VER 10033
+#define AUD3004X_CODEC_VER 10032
 
 #ifdef CONFIG_SND_SOC_SAMSUNG_VERBOSE_DEBUG
 #ifdef dev_dbg
@@ -3265,7 +3258,7 @@ static void aud3004x_register_initialize(void *context)
 			DMIC_GAIN_PRE_MASK, DMIC_GAIN_3 << DMIC_GAIN_PRE_SHIFT);
 
 	/* MDET Comp */
-	aud3004x_acpm_write_reg(AUD3004X_CLOSE_ADDR, 0x97, 0x66);
+	aud3004x_acpm_write_reg(AUD3004X_CLOSE_ADDR, 0x97, 0x55);
 
 	/* Offset Range control */
 	aud3004x_update_bits(aud3004x, AUD3004X_4E_OFFSET_OPT,

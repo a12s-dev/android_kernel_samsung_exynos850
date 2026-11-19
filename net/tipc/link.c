@@ -914,9 +914,7 @@ void tipc_link_reset(struct tipc_link *l)
 int tipc_link_xmit(struct tipc_link *l, struct sk_buff_head *list,
 		   struct sk_buff_head *xmitq)
 {
-	struct tipc_msg *hdr = buf_msg(skb_peek(list));
 	unsigned int maxwin = l->window;
-	int imp = msg_importance(hdr);
 	unsigned int mtu = l->mtu;
 	u16 ack = l->rcv_nxt - 1;
 	u16 seqno = l->snd_nxt;
@@ -925,13 +923,20 @@ int tipc_link_xmit(struct tipc_link *l, struct sk_buff_head *list,
 	struct sk_buff_head *backlogq = &l->backlogq;
 	struct sk_buff *skb, *_skb, **tskb;
 	int pkt_cnt = skb_queue_len(list);
+	struct tipc_msg *hdr;
 	int rc = 0;
+	int imp;
 
+	if (pkt_cnt <= 0)
+		return 0;
+
+	hdr = buf_msg(skb_peek(list));
 	if (unlikely(msg_size(hdr) > mtu)) {
 		__skb_queue_purge(list);
 		return -EMSGSIZE;
 	}
 
+	imp = msg_importance(hdr);
 	/* Allow oversubscription of one data msg per source at congestion */
 	if (unlikely(l->backlog[imp].len >= l->backlog[imp].limit)) {
 		if (imp == TIPC_SYSTEM_IMPORTANCE) {
@@ -1574,12 +1579,15 @@ static int tipc_link_proto_rcv(struct tipc_link *l, struct sk_buff *skb,
 	u16 peers_tol = msg_link_tolerance(hdr);
 	u16 peers_prio = msg_linkprio(hdr);
 	u16 rcv_nxt = l->rcv_nxt;
-	u16 dlen = msg_data_sz(hdr);
+	u32 dlen = msg_data_sz(hdr);
 	int mtyp = msg_type(hdr);
 	bool reply = msg_probe(hdr);
 	void *data;
 	char *if_name;
 	int rc = 0;
+
+	if (dlen > U16_MAX)
+		goto exit;
 
 	if (tipc_link_is_blocked(l) || !xmitq)
 		goto exit;
@@ -1587,7 +1595,9 @@ static int tipc_link_proto_rcv(struct tipc_link *l, struct sk_buff *skb,
 	if (tipc_own_addr(l->net) > msg_prevnode(hdr))
 		l->net_plane = msg_net_plane(hdr);
 
-	skb_linearize(skb);
+	if (skb_linearize(skb))
+		goto exit;
+
 	hdr = buf_msg(skb);
 	data = msg_data(hdr);
 
@@ -1970,8 +1980,8 @@ int tipc_nl_parse_link_prop(struct nlattr *prop, struct nlattr *props[])
 {
 	int err;
 
-	err = nla_parse_nested(props, TIPC_NLA_PROP_MAX, prop,
-			       tipc_nl_prop_policy, NULL);
+	err = nla_parse_nested_deprecated(props, TIPC_NLA_PROP_MAX, prop,
+					  tipc_nl_prop_policy, NULL);
 	if (err)
 		return err;
 
@@ -2050,7 +2060,7 @@ static int __tipc_nl_add_stats(struct sk_buff *skb, struct tipc_stats *s)
 			(s->accu_queue_sz / s->queue_sz_counts) : 0}
 	};
 
-	stats = nla_nest_start(skb, TIPC_NLA_LINK_STATS);
+	stats = nla_nest_start_noflag(skb, TIPC_NLA_LINK_STATS);
 	if (!stats)
 		return -EMSGSIZE;
 
@@ -2082,7 +2092,7 @@ int __tipc_nl_add_link(struct net *net, struct tipc_nl_msg *msg,
 	if (!hdr)
 		return -EMSGSIZE;
 
-	attrs = nla_nest_start(msg->skb, TIPC_NLA_LINK);
+	attrs = nla_nest_start_noflag(msg->skb, TIPC_NLA_LINK);
 	if (!attrs)
 		goto msg_full;
 
@@ -2104,7 +2114,7 @@ int __tipc_nl_add_link(struct net *net, struct tipc_nl_msg *msg,
 		if (nla_put_flag(msg->skb, TIPC_NLA_LINK_ACTIVE))
 			goto attr_msg_full;
 
-	prop = nla_nest_start(msg->skb, TIPC_NLA_LINK_PROP);
+	prop = nla_nest_start_noflag(msg->skb, TIPC_NLA_LINK_PROP);
 	if (!prop)
 		goto attr_msg_full;
 	if (nla_put_u32(msg->skb, TIPC_NLA_PROP_PRIO, link->priority))
@@ -2171,7 +2181,7 @@ static int __tipc_nl_add_bc_link_stat(struct sk_buff *skb,
 			(stats->accu_queue_sz / stats->queue_sz_counts) : 0}
 	};
 
-	nest = nla_nest_start(skb, TIPC_NLA_LINK_STATS);
+	nest = nla_nest_start_noflag(skb, TIPC_NLA_LINK_STATS);
 	if (!nest)
 		return -EMSGSIZE;
 
@@ -2209,7 +2219,7 @@ int tipc_nl_add_bc_link(struct net *net, struct tipc_nl_msg *msg)
 		return -EMSGSIZE;
 	}
 
-	attrs = nla_nest_start(msg->skb, TIPC_NLA_LINK);
+	attrs = nla_nest_start_noflag(msg->skb, TIPC_NLA_LINK);
 	if (!attrs)
 		goto msg_full;
 
@@ -2226,7 +2236,7 @@ int tipc_nl_add_bc_link(struct net *net, struct tipc_nl_msg *msg)
 	if (nla_put_u32(msg->skb, TIPC_NLA_LINK_TX, 0))
 		goto attr_msg_full;
 
-	prop = nla_nest_start(msg->skb, TIPC_NLA_LINK_PROP);
+	prop = nla_nest_start_noflag(msg->skb, TIPC_NLA_LINK_PROP);
 	if (!prop)
 		goto attr_msg_full;
 	if (nla_put_u32(msg->skb, TIPC_NLA_PROP_WIN, bcl->window))

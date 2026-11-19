@@ -144,7 +144,7 @@ char *sync_file_get_name(struct sync_file *sync_file, char *buf, int len)
 	} else {
 		struct dma_fence *fence = sync_file->fence;
 
-		snprintf(buf, len, "%s-%s%llu-%d",
+		snprintf(buf, len, "%s-%s%llu-%lld",
 			 fence->ops->get_driver_name(fence),
 			 fence->ops->get_timeline_name(fence),
 			 fence->context,
@@ -220,8 +220,8 @@ static struct sync_file *sync_file_merge(const char *name, struct sync_file *a,
 					 struct sync_file *b)
 {
 	struct sync_file *sync_file;
-	struct dma_fence **fences, **nfences, **a_fences, **b_fences;
-	int i, i_a, i_b, num_fences, a_num_fences, b_num_fences;
+	struct dma_fence **fences = NULL, **nfences, **a_fences, **b_fences;
+	int i = 0, i_a, i_b, num_fences, a_num_fences, b_num_fences;
 
 	sync_file = sync_file_alloc();
 	if (!sync_file)
@@ -245,7 +245,7 @@ static struct sync_file *sync_file_merge(const char *name, struct sync_file *a,
 	 * If a sync_file can only be created with sync_file_merge
 	 * and sync_file_create, this is a reasonable assumption.
 	 */
-	for (i = i_a = i_b = 0; i_a < a_num_fences && i_b < b_num_fences; ) {
+	for (i_a = i_b = 0; i_a < a_num_fences && i_b < b_num_fences; ) {
 		struct dma_fence *pt_a = a_fences[i_a];
 		struct dma_fence *pt_b = b_fences[i_b];
 
@@ -258,7 +258,8 @@ static struct sync_file *sync_file_merge(const char *name, struct sync_file *a,
 
 			i_b++;
 		} else {
-			if (pt_a->seqno - pt_b->seqno <= INT_MAX)
+			if (__dma_fence_is_later(pt_a->seqno, pt_b->seqno,
+						 pt_a->ops))
 				add_fence(fences, &i, pt_a);
 			else
 				add_fence(fences, &i, pt_b);
@@ -286,15 +287,16 @@ static struct sync_file *sync_file_merge(const char *name, struct sync_file *a,
 		fences = nfences;
 	}
 
-	if (sync_file_set_fence(sync_file, fences, i) < 0) {
-		kfree(fences);
+	if (sync_file_set_fence(sync_file, fences, i) < 0)
 		goto err;
-	}
 
 	strlcpy(sync_file->user_name, name, sizeof(sync_file->user_name));
 	return sync_file;
 
 err:
+	while (i)
+		dma_fence_put(fences[--i]);
+	kfree(fences);
 	fput(sync_file->file);
 	return NULL;
 
@@ -427,7 +429,7 @@ static long sync_file_ioctl_fence_info(struct sync_file *sync_file,
 	 * info->num_fences.
 	 */
 	if (!info.num_fences) {
-		info.status = dma_fence_is_signaled(sync_file->fence);
+		info.status = dma_fence_get_status(sync_file->fence);
 		goto no_fences;
 	} else {
 		info.status = 1;
@@ -488,5 +490,5 @@ static const struct file_operations sync_file_fops = {
 	.release = sync_file_release,
 	.poll = sync_file_poll,
 	.unlocked_ioctl = sync_file_ioctl,
-	.compat_ioctl = sync_file_ioctl,
+	.compat_ioctl = compat_ptr_ioctl,
 };

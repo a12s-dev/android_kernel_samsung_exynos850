@@ -40,7 +40,6 @@
 
 #include "abox_util.h"
 #include "abox_dbg.h"
-#include "abox_proc.h"
 #include "abox_log.h"
 #include "abox_dump.h"
 #include "abox_gic.h"
@@ -3250,7 +3249,7 @@ static int samsung_abox_probe(struct platform_device *pdev)
 		abox_ipc_register_handler(dev, i, abox_ipc_handler, pdev);
 
 	abox_parse_extra_firmware(data);
-	abox_proc_probe();
+
 	abox_shm_init(data->shm_addr, data->shm_size);
 
 	data->regmap = abox_soc_get_regmap(dev);
@@ -3316,7 +3315,6 @@ static int samsung_abox_remove(struct platform_device *pdev)
 
 	dev_info(dev, "%s\n", __func__);
 
-	abox_proc_remove();
 	pm_runtime_disable(dev);
 #ifndef CONFIG_PM
 	abox_runtime_suspend(dev);

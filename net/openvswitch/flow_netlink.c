@@ -836,7 +836,7 @@ static int vxlan_opt_to_nlattr(struct sk_buff *skb,
 	const struct vxlan_metadata *opts = tun_opts;
 	struct nlattr *nla;
 
-	nla = nla_nest_start(skb, OVS_TUNNEL_KEY_ATTR_VXLAN_OPTS);
+	nla = nla_nest_start_noflag(skb, OVS_TUNNEL_KEY_ATTR_VXLAN_OPTS);
 	if (!nla)
 		return -EMSGSIZE;
 
@@ -923,7 +923,7 @@ static int ip_tun_to_nlattr(struct sk_buff *skb,
 	struct nlattr *nla;
 	int err;
 
-	nla = nla_nest_start(skb, OVS_KEY_ATTR_TUNNEL);
+	nla = nla_nest_start_noflag(skb, OVS_KEY_ATTR_TUNNEL);
 	if (!nla)
 		return -EMSGSIZE;
 
@@ -1932,7 +1932,7 @@ static int nsh_key_to_nlattr(const struct ovs_key_nsh *nsh, bool is_mask,
 {
 	struct nlattr *start;
 
-	start = nla_nest_start(skb, OVS_KEY_ATTR_NSH);
+	start = nla_nest_start_noflag(skb, OVS_KEY_ATTR_NSH);
 	if (!start)
 		return -EMSGSIZE;
 
@@ -2015,14 +2015,15 @@ static int __ovs_nla_put_key(const struct sw_flow_key *swkey,
 		if (swkey->eth.vlan.tci || eth_type_vlan(swkey->eth.type)) {
 			if (ovs_nla_put_vlan(skb, &output->eth.vlan, is_mask))
 				goto nla_put_failure;
-			encap = nla_nest_start(skb, OVS_KEY_ATTR_ENCAP);
+			encap = nla_nest_start_noflag(skb, OVS_KEY_ATTR_ENCAP);
 			if (!swkey->eth.vlan.tci)
 				goto unencap;
 
 			if (swkey->eth.cvlan.tci || eth_type_vlan(swkey->eth.type)) {
 				if (ovs_nla_put_vlan(skb, &output->eth.cvlan, is_mask))
 					goto nla_put_failure;
-				in_encap = nla_nest_start(skb, OVS_KEY_ATTR_ENCAP);
+				in_encap = nla_nest_start_noflag(skb,
+								 OVS_KEY_ATTR_ENCAP);
 				if (!swkey->eth.cvlan.tci)
 					goto unencap;
 			}
@@ -2166,8 +2167,8 @@ static int __ovs_nla_put_key(const struct sw_flow_key *swkey,
 			icmpv6_key->icmpv6_type = ntohs(output->tp.src);
 			icmpv6_key->icmpv6_code = ntohs(output->tp.dst);
 
-			if (icmpv6_key->icmpv6_type == NDISC_NEIGHBOUR_SOLICITATION ||
-			    icmpv6_key->icmpv6_type == NDISC_NEIGHBOUR_ADVERTISEMENT) {
+			if (swkey->tp.src == htons(NDISC_NEIGHBOUR_SOLICITATION) ||
+			    swkey->tp.src == htons(NDISC_NEIGHBOUR_ADVERTISEMENT)) {
 				struct ovs_key_nd *nd_key;
 
 				nla = nla_reserve(skb, OVS_KEY_ATTR_ND, sizeof(*nd_key));
@@ -2201,7 +2202,7 @@ int ovs_nla_put_key(const struct sw_flow_key *swkey,
 	int err;
 	struct nlattr *nla;
 
-	nla = nla_nest_start(skb, attr);
+	nla = nla_nest_start_noflag(skb, attr);
 	if (!nla)
 		return -EMSGSIZE;
 	err = __ovs_nla_put_key(swkey, output, is_mask, skb);
@@ -2253,6 +2254,36 @@ static struct sw_flow_actions *nla_alloc_flow_actions(int size)
 	return sfa;
 }
 
+static void ovs_nla_free_nested_actions(const struct nlattr *actions, int len);
+
+static void ovs_nla_free_clone_action(const struct nlattr *action)
+{
+	const struct nlattr *a = nla_data(action);
+	int rem = nla_len(action);
+
+	switch (nla_type(a)) {
+	case OVS_CLONE_ATTR_EXEC:
+		/* The real list of actions follows this attribute. */
+		a = nla_next(a, &rem);
+		ovs_nla_free_nested_actions(a, rem);
+		break;
+	}
+}
+
+static void ovs_nla_free_sample_action(const struct nlattr *action)
+{
+	const struct nlattr *a = nla_data(action);
+	int rem = nla_len(action);
+
+	switch (nla_type(a)) {
+	case OVS_SAMPLE_ATTR_ARG:
+		/* The real list of actions follows this attribute. */
+		a = nla_next(a, &rem);
+		ovs_nla_free_nested_actions(a, rem);
+		break;
+	}
+}
+
 static void ovs_nla_free_set_action(const struct nlattr *a)
 {
 	const struct nlattr *ovs_key = nla_data(a);
@@ -2266,25 +2297,46 @@ static void ovs_nla_free_set_action(const struct nlattr *a)
 	}
 }
 
-void ovs_nla_free_flow_actions(struct sw_flow_actions *sf_acts)
+static void ovs_nla_free_nested_actions(const struct nlattr *actions, int len)
 {
 	const struct nlattr *a;
 	int rem;
 
-	if (!sf_acts)
+	/* Whenever new actions are added, the need to update this
+	 * function should be considered.
+	 */
+	BUILD_BUG_ON(OVS_ACTION_ATTR_MAX != 20);
+
+	if (!actions)
 		return;
 
-	nla_for_each_attr(a, sf_acts->actions, sf_acts->actions_len, rem) {
+	nla_for_each_attr(a, actions, len, rem) {
 		switch (nla_type(a)) {
-		case OVS_ACTION_ATTR_SET:
-			ovs_nla_free_set_action(a);
+		case OVS_ACTION_ATTR_CLONE:
+			ovs_nla_free_clone_action(a);
 			break;
+
 		case OVS_ACTION_ATTR_CT:
 			ovs_ct_free_action(a);
 			break;
+
+		case OVS_ACTION_ATTR_SAMPLE:
+			ovs_nla_free_sample_action(a);
+			break;
+
+		case OVS_ACTION_ATTR_SET:
+			ovs_nla_free_set_action(a);
+			break;
 		}
 	}
+}
 
+void ovs_nla_free_flow_actions(struct sw_flow_actions *sf_acts)
+{
+	if (!sf_acts)
+		return;
+
+	ovs_nla_free_nested_actions(sf_acts->actions, sf_acts->actions_len);
 	kfree(sf_acts);
 }
 
@@ -2316,7 +2368,7 @@ static struct nlattr *reserve_sfa_size(struct sw_flow_actions **sfa,
 	new_acts_size = max(next_offset + req_size, ksize(*sfa) * 2);
 
 	if (new_acts_size > MAX_ACTIONS_BUFSIZE) {
-		if ((MAX_ACTIONS_BUFSIZE - next_offset) < req_size) {
+		if ((next_offset + req_size) > MAX_ACTIONS_BUFSIZE) {
 			OVS_NLERR(log, "Flow action size exceeds max %u",
 				  MAX_ACTIONS_BUFSIZE);
 			return ERR_PTR(-EMSGSIZE);
@@ -2826,8 +2878,8 @@ static int validate_userspace(const struct nlattr *attr)
 	struct nlattr *a[OVS_USERSPACE_ATTR_MAX + 1];
 	int error;
 
-	error = nla_parse_nested(a, OVS_USERSPACE_ATTR_MAX, attr,
-				 userspace_policy, NULL);
+	error = nla_parse_nested_deprecated(a, OVS_USERSPACE_ATTR_MAX, attr,
+					    userspace_policy, NULL);
 	if (error)
 		return error;
 
@@ -3130,7 +3182,7 @@ static int sample_action_to_attr(const struct nlattr *attr,
 	const struct sample_arg *arg;
 	struct nlattr *actions;
 
-	start = nla_nest_start(skb, OVS_ACTION_ATTR_SAMPLE);
+	start = nla_nest_start_noflag(skb, OVS_ACTION_ATTR_SAMPLE);
 	if (!start)
 		return -EMSGSIZE;
 
@@ -3143,7 +3195,7 @@ static int sample_action_to_attr(const struct nlattr *attr,
 		goto out;
 	}
 
-	ac_start = nla_nest_start(skb, OVS_SAMPLE_ATTR_ACTIONS);
+	ac_start = nla_nest_start_noflag(skb, OVS_SAMPLE_ATTR_ACTIONS);
 	if (!ac_start) {
 		err = -EMSGSIZE;
 		goto out;
@@ -3169,11 +3221,13 @@ static int clone_action_to_attr(const struct nlattr *attr,
 	struct nlattr *start;
 	int err = 0, rem = nla_len(attr);
 
-	start = nla_nest_start(skb, OVS_ACTION_ATTR_CLONE);
+	start = nla_nest_start_noflag(skb, OVS_ACTION_ATTR_CLONE);
 	if (!start)
 		return -EMSGSIZE;
 
-	err = ovs_nla_put_actions(nla_data(attr), rem, skb);
+	/* Skipping the OVS_CLONE_ATTR_EXEC that is always the first attribute. */
+	attr = nla_next(nla_data(attr), &rem);
+	err = ovs_nla_put_actions(attr, rem, skb);
 
 	if (err)
 		nla_nest_cancel(skb, start);
@@ -3195,7 +3249,7 @@ static int set_action_to_attr(const struct nlattr *a, struct sk_buff *skb)
 		struct ovs_tunnel_info *ovs_tun = nla_data(ovs_key);
 		struct ip_tunnel_info *tun_info = &ovs_tun->tun_dst->u.tun_info;
 
-		start = nla_nest_start(skb, OVS_ACTION_ATTR_SET);
+		start = nla_nest_start_noflag(skb, OVS_ACTION_ATTR_SET);
 		if (!start)
 			return -EMSGSIZE;
 
@@ -3227,7 +3281,7 @@ static int masked_set_action_to_set_action_attr(const struct nlattr *a,
 	/* Revert the conversion we did from a non-masked set action to
 	 * masked set action.
 	 */
-	nla = nla_nest_start(skb, OVS_ACTION_ATTR_SET);
+	nla = nla_nest_start_noflag(skb, OVS_ACTION_ATTR_SET);
 	if (!nla)
 		return -EMSGSIZE;
 

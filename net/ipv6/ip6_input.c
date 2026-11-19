@@ -29,6 +29,7 @@
 #include <linux/icmpv6.h>
 #include <linux/mroute6.h>
 #include <linux/slab.h>
+#include <linux/indirect_call_wrapper.h>
 
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv6.h>
@@ -47,18 +48,25 @@
 #include <net/inet_ecn.h>
 #include <net/dst_metadata.h>
 
+void udp_v6_early_demux(struct sk_buff *);
+void tcp_v6_early_demux(struct sk_buff *);
 static void ip6_rcv_finish_core(struct net *net, struct sock *sk,
 				struct sk_buff *skb)
 {
-	void (*edemux)(struct sk_buff *skb);
-
-	if (net->ipv4.sysctl_ip_early_demux && !skb_dst(skb) && skb->sk == NULL) {
-		const struct inet6_protocol *ipprot;
-
-		ipprot = rcu_dereference(inet6_protos[ipv6_hdr(skb)->nexthdr]);
-		if (ipprot && (edemux = READ_ONCE(ipprot->early_demux)))
-			edemux(skb);
+	if (READ_ONCE(net->ipv4.sysctl_ip_early_demux) &&
+	    !skb_dst(skb) && !skb->sk) {
+		switch (ipv6_hdr(skb)->nexthdr) {
+		case IPPROTO_TCP:
+			if (READ_ONCE(net->ipv4.sysctl_tcp_early_demux))
+				tcp_v6_early_demux(skb);
+			break;
+		case IPPROTO_UDP:
+			if (READ_ONCE(net->ipv4.sysctl_udp_early_demux))
+				udp_v6_early_demux(skb);
+			break;
+		}
 	}
+
 	if (!skb_valid_dst(skb))
 		ip6_route_input(skb);
 }
@@ -180,7 +188,8 @@ static struct sk_buff *ip6_rcv_core(struct sk_buff *skb, struct net_device *dev,
 	 */
 	if ((ipv6_addr_loopback(&hdr->saddr) ||
 	     ipv6_addr_loopback(&hdr->daddr)) &&
-	     !(dev->flags & IFF_LOOPBACK))
+	    !(dev->flags & IFF_LOOPBACK) &&
+	    !netif_is_l3_master(dev))
 		goto err;
 
 	/* RFC4291 Errata ID: 3480
@@ -222,16 +231,6 @@ static struct sk_buff *ip6_rcv_core(struct sk_buff *skb, struct net_device *dev,
 	if (ipv6_addr_is_multicast(&hdr->saddr))
 		goto err;
 
-	/* While RFC4291 is not explicit about v4mapped addresses
-	 * in IPv6 headers, it seems clear linux dual-stack
-	 * model can not deal properly with these.
-	 * Security models could be fooled by ::ffff:127.0.0.1 for example.
-	 *
-	 * https://tools.ietf.org/html/draft-itojun-v6ops-v4mapped-harmful-02
-	 */
-	if (ipv6_addr_v4mapped(&hdr->saddr))
-		goto err;
-
 	skb->transport_header = skb->network_header + sizeof(*hdr);
 	IP6CB(skb)->nhoff = offsetof(struct ipv6hdr, nexthdr);
 
@@ -262,7 +261,8 @@ static struct sk_buff *ip6_rcv_core(struct sk_buff *skb, struct net_device *dev,
 	rcu_read_unlock();
 
 	/* Must drop socket now because of tproxy. */
-	skb_orphan(skb);
+	if (!skb_sk_is_prefetched(skb))
+		skb_orphan(skb);
 
 	return skb;
 err:
@@ -327,31 +327,32 @@ void ipv6_list_rcv(struct list_head *head, struct packet_type *pt,
 	ip6_sublist_rcv(&sublist, curr_dev, curr_net);
 }
 
+INDIRECT_CALLABLE_DECLARE(int udpv6_rcv(struct sk_buff *));
+INDIRECT_CALLABLE_DECLARE(int tcp_v6_rcv(struct sk_buff *));
+
 /*
  *	Deliver the packet to the host
  */
-
-
-static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
+void ip6_protocol_deliver_rcu(struct net *net, struct sk_buff *skb, int nexthdr,
+			      bool have_final)
 {
 	const struct inet6_protocol *ipprot;
 	struct inet6_dev *idev;
 	unsigned int nhoff;
-	int nexthdr;
 	bool raw;
-	bool have_final = false;
 
 	/*
 	 *	Parse extension headers
 	 */
 
-	rcu_read_lock();
 resubmit:
 	idev = ip6_dst_idev(skb_dst(skb));
-	if (!pskb_pull(skb, skb_transport_offset(skb)))
-		goto discard;
 	nhoff = IP6CB(skb)->nhoff;
-	nexthdr = skb_network_header(skb)[nhoff];
+	if (!have_final) {
+		if (!pskb_pull(skb, skb_transport_offset(skb)))
+			goto discard;
+		nexthdr = skb_network_header(skb)[nhoff];
+	}
 
 resubmit_final:
 	raw = raw6_local_deliver(skb, nexthdr);
@@ -392,7 +393,8 @@ resubmit_final:
 		    !xfrm6_policy_check(NULL, XFRM_POLICY_IN, skb))
 			goto discard;
 
-		ret = ipprot->handler(skb);
+		ret = INDIRECT_CALL_2(ipprot->handler, tcp_v6_rcv, udpv6_rcv,
+				      skb);
 		if (ret > 0) {
 			if (ipprot->flags & INET6_PROTO_FINAL) {
 				/* Not an extension header, most likely UDP
@@ -422,13 +424,19 @@ resubmit_final:
 			consume_skb(skb);
 		}
 	}
-	rcu_read_unlock();
-	return 0;
+	return;
 
 discard:
 	__IP6_INC_STATS(net, idev, IPSTATS_MIB_INDISCARDS);
-	rcu_read_unlock();
 	kfree_skb(skb);
+}
+
+static int ip6_input_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
+{
+	rcu_read_lock();
+	ip6_protocol_deliver_rcu(net, skb, 0, false);
+	rcu_read_unlock();
+
 	return 0;
 }
 

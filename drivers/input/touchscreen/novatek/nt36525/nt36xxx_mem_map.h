@@ -30,8 +30,6 @@ struct nvt_ts_mem_map {
 	uint32_t DIFF_BTN_PIPE1_ADDR;
 	uint32_t READ_FLASH_CHECKSUM_ADDR;
 	uint32_t RW_FLASH_DATA_ADDR;
-	/* FDM selftest */
-	uint32_t DOZE_GM_S1D_SCAN_RAW_ADDR;
 	/* Phase 2 Host Download */
 	uint32_t BOOT_RDY_ADDR;
 	uint32_t POR_CD_ADDR;
@@ -50,15 +48,6 @@ struct nvt_ts_mem_map {
 	uint32_t DMA_CRC_EN_ADDR;
 	uint32_t BLD_ILM_DLM_CRC_ADDR;
 	uint32_t DMA_CRC_FLAG_ADDR;
-	/* SRAM Test */
-	uint32_t MBT_MUX_CTL0;
-	uint32_t MBT_MUX_CTL1;
-	uint32_t MBT_MUX_CTL2;
-	uint32_t MBT_DB;
-	uint32_t MBT_MODE;
-	uint32_t MBT_EN;
-	uint32_t MBT_OP;
-	uint32_t MBT_STATUS;
 };
 
 struct nvt_ts_hw_info {
@@ -97,15 +86,6 @@ static const struct nvt_ts_mem_map NT36526_memory_map = {
 	.DMA_CRC_EN_ADDR          = 0x3F136,
 	.BLD_ILM_DLM_CRC_ADDR     = 0x3F133,
 	.DMA_CRC_FLAG_ADDR        = 0x3F134,
-	/* SRAM Test */
-	.MBT_MUX_CTL0		= 0x3F2C0,
-	.MBT_MUX_CTL1		= 0x3F2C1,
-	.MBT_MUX_CTL2		= 0x3F2C2,
-	.MBT_DB				= 0x3F2C3,
-	.MBT_MODE			= 0x3F2C7,
-	.MBT_EN				= 0x3F2C8,
-	.MBT_OP				= 0x3F2C9,
-	.MBT_STATUS			= 0x3F2CE,
 };
 
 
@@ -123,8 +103,6 @@ static const struct nvt_ts_mem_map NT36675_memory_map = {
 	.DIFF_BTN_PIPE1_ADDR      = 0,
 	.READ_FLASH_CHECKSUM_ADDR = 0x24000,
 	.RW_FLASH_DATA_ADDR       = 0x24002,
-	/* FDM selftest */
-	.DOZE_GM_S1D_SCAN_RAW_ADDR = 0x22900,
 	/* Phase 2 Host Download */
 	.BOOT_RDY_ADDR            = 0x3F10D,
 	/* BLD CRC */
@@ -142,15 +120,6 @@ static const struct nvt_ts_mem_map NT36675_memory_map = {
 	.DMA_CRC_EN_ADDR          = 0x3F136,
 	.BLD_ILM_DLM_CRC_ADDR     = 0x3F133,
 	.DMA_CRC_FLAG_ADDR        = 0x3F134,
-	/* SRAM Test */
-	.MBT_MUX_CTL0		= 0x3F2C0,
-	.MBT_MUX_CTL1		= 0x3F2C1,
-	.MBT_MUX_CTL2		= 0x3F2C2,
-	.MBT_DB				= 0x3F2C3,
-	.MBT_MODE			= 0x3F2C7,
-	.MBT_EN				= 0x3F2C8,
-	.MBT_OP				= 0x3F2C9,
-	.MBT_STATUS			= 0x3F2CE,
 };
 
 
@@ -168,8 +137,6 @@ static const struct nvt_ts_mem_map NT36672A_memory_map = {
 	.DIFF_BTN_PIPE1_ADDR      = 0x23BF0,
 	.READ_FLASH_CHECKSUM_ADDR = 0x24000,
 	.RW_FLASH_DATA_ADDR       = 0x24002,
-	/* FDM selftest */
-	.DOZE_GM_S1D_SCAN_RAW_ADDR = 0x23C1C,
 	/* Phase 2 Host Download */
 	.BOOT_RDY_ADDR            = 0x3F10D,
 	/* BLD CRC */
@@ -187,15 +154,6 @@ static const struct nvt_ts_mem_map NT36672A_memory_map = {
 	.DMA_CRC_EN_ADDR          = 0x3F132,
 	.BLD_ILM_DLM_CRC_ADDR     = 0x3F133,
 	.DMA_CRC_FLAG_ADDR        = 0x3F134,
-	/* SRAM Test */
-	.MBT_MUX_CTL0		= 0x3F2C0,
-	.MBT_MUX_CTL1		= 0x3F2C1,
-	.MBT_MUX_CTL2		= 0x3F2C2,
-	.MBT_DB				= 0x3F2C3,
-	.MBT_MODE			= 0x3F2C7,
-	.MBT_EN				= 0x3F2C8,
-	.MBT_OP				= 0x3F2C9,
-	.MBT_STATUS			= 0x3F2CE,
 };
 
 static const struct nvt_ts_mem_map NT36772_memory_map = {
@@ -212,8 +170,6 @@ static const struct nvt_ts_mem_map NT36772_memory_map = {
 	.DIFF_BTN_PIPE1_ADDR      = 0x12E68,
 	.READ_FLASH_CHECKSUM_ADDR = 0x14000,
 	.RW_FLASH_DATA_ADDR       = 0x14002,
-	/* FDM selftest */
-	.DOZE_GM_S1D_SCAN_RAW_ADDR = 0x143D0,
 	/* Phase 2 Host Download */
 	.BOOT_RDY_ADDR            = 0x1F141,
 	.POR_CD_ADDR              = 0x1F61C,
@@ -235,8 +191,6 @@ static const struct nvt_ts_mem_map NT36525_memory_map = {
 	.DIFF_BTN_PIPE1_ADDR      = 0x12AFC,
 	.READ_FLASH_CHECKSUM_ADDR = 0x14000,
 	.RW_FLASH_DATA_ADDR       = 0x14002,
-	/* FDM selftest */
-	.DOZE_GM_S1D_SCAN_RAW_ADDR = 0x12B28,
 	/* Phase 2 Host Download */
 	.BOOT_RDY_ADDR            = 0x1F141,
 	.POR_CD_ADDR              = 0x1F61C,
@@ -258,8 +212,6 @@ static const struct nvt_ts_mem_map NT36676F_memory_map = {
 	.DIFF_BTN_PIPE1_ADDR      = 0x12AFC,
 	.READ_FLASH_CHECKSUM_ADDR = 0x14000,
 	.RW_FLASH_DATA_ADDR       = 0x14002,
-	/* FDM selftest */
-	.DOZE_GM_S1D_SCAN_RAW_ADDR = 0x12B28,
 };
 
 static struct nvt_ts_hw_info NT36526_hw_info = {

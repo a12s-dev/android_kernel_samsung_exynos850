@@ -15,6 +15,15 @@ config FINGERPRINT_SECURE
 	help
 	  If you say yes here you get support for Trustzone.
 
+config SENSORS_FPRINT_SECURE
+	tristate "fingerprint sensor support"
+	default n
+	help
+	  If you say yes here you get support for Trustzone.
+	  In case of user binary, fingerprint sensor operates within trustzone.
+	  If this feature enabled, spi communication is controlled by Trusted Application.
+	  Then it should be enabled in the user binary.
+
 config SENSORS_FINGERPRINT_MODULE
 	bool "module build"
 	default n
@@ -38,6 +47,12 @@ config SENSORS_FINGERPRINT_MTK
 	default n
 	help
 	  If you say yes here you get support for Mediatek AP.
+
+config SENSORS_FINGERPRINT_NORMALSPI
+	tristate "Goodix SPI normal mode"
+	default n
+	help
+	  If you say yes here you get to use spi normal mode on goodix sensor.
 
 config SENSORS_FINGERPRINT_32BITS_PLATFORM_ONLY
 	tristate "32bits platform support"

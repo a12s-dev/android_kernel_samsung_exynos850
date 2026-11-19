@@ -577,8 +577,9 @@ static int genl_family_rcv_msg(const struct genl_family *family,
 		attrbuf = family->attrbuf;
 
 	if (attrbuf) {
-		err = nlmsg_parse(nlh, hdrlen, attrbuf, family->maxattr,
-				  ops->policy, extack);
+		err = nlmsg_parse_deprecated(nlh, hdrlen, attrbuf,
+					     family->maxattr, ops->policy,
+					     extack);
 		if (err < 0)
 			goto out;
 	}
@@ -665,7 +666,7 @@ static int ctrl_fill_info(const struct genl_family *family, u32 portid, u32 seq,
 		struct nlattr *nla_ops;
 		int i;
 
-		nla_ops = nla_nest_start(skb, CTRL_ATTR_OPS);
+		nla_ops = nla_nest_start_noflag(skb, CTRL_ATTR_OPS);
 		if (nla_ops == NULL)
 			goto nla_put_failure;
 
@@ -681,7 +682,7 @@ static int ctrl_fill_info(const struct genl_family *family, u32 portid, u32 seq,
 			if (ops->policy)
 				op_flags |= GENL_CMD_CAP_HASPOL;
 
-			nest = nla_nest_start(skb, i + 1);
+			nest = nla_nest_start_noflag(skb, i + 1);
 			if (nest == NULL)
 				goto nla_put_failure;
 
@@ -699,7 +700,7 @@ static int ctrl_fill_info(const struct genl_family *family, u32 portid, u32 seq,
 		struct nlattr *nla_grps;
 		int i;
 
-		nla_grps = nla_nest_start(skb, CTRL_ATTR_MCAST_GROUPS);
+		nla_grps = nla_nest_start_noflag(skb, CTRL_ATTR_MCAST_GROUPS);
 		if (nla_grps == NULL)
 			goto nla_put_failure;
 
@@ -709,7 +710,7 @@ static int ctrl_fill_info(const struct genl_family *family, u32 portid, u32 seq,
 
 			grp = &family->mcgrps[i];
 
-			nest = nla_nest_start(skb, i + 1);
+			nest = nla_nest_start_noflag(skb, i + 1);
 			if (nest == NULL)
 				goto nla_put_failure;
 
@@ -749,11 +750,11 @@ static int ctrl_fill_mcgrp_info(const struct genl_family *family,
 	    nla_put_u16(skb, CTRL_ATTR_FAMILY_ID, family->id))
 		goto nla_put_failure;
 
-	nla_grps = nla_nest_start(skb, CTRL_ATTR_MCAST_GROUPS);
+	nla_grps = nla_nest_start_noflag(skb, CTRL_ATTR_MCAST_GROUPS);
 	if (nla_grps == NULL)
 		goto nla_put_failure;
 
-	nest = nla_nest_start(skb, 1);
+	nest = nla_nest_start_noflag(skb, 1);
 	if (nest == NULL)
 		goto nla_put_failure;
 
@@ -961,60 +962,11 @@ static struct genl_family genl_ctrl __ro_after_init = {
 	.netnsok = true,
 };
 
-static int genl_bind(struct net *net, int group)
-{
-	struct genl_family *f;
-	int err = 0;
-	unsigned int id;
-
-	down_read(&cb_lock);
-
-	idr_for_each_entry(&genl_fam_idr, f, id) {
-		if (group >= f->mcgrp_offset &&
-		    group < f->mcgrp_offset + f->n_mcgrps) {
-			int fam_grp = group - f->mcgrp_offset;
-
-			if (!f->netnsok && net != &init_net)
-				err = -ENOENT;
-			else if (f->mcast_bind)
-				err = f->mcast_bind(net, fam_grp);
-			else
-				err = 0;
-			break;
-		}
-	}
-	up_read(&cb_lock);
-
-	return err;
-}
-
-static void genl_unbind(struct net *net, int group)
-{
-	struct genl_family *f;
-	unsigned int id;
-
-	down_read(&cb_lock);
-
-	idr_for_each_entry(&genl_fam_idr, f, id) {
-		if (group >= f->mcgrp_offset &&
-		    group < f->mcgrp_offset + f->n_mcgrps) {
-			int fam_grp = group - f->mcgrp_offset;
-
-			if (f->mcast_unbind)
-				f->mcast_unbind(net, fam_grp);
-			break;
-		}
-	}
-	up_read(&cb_lock);
-}
-
 static int __net_init genl_pernet_init(struct net *net)
 {
 	struct netlink_kernel_cfg cfg = {
 		.input		= genl_rcv,
 		.flags		= NL_CFG_F_NONROOT_RECV,
-		.bind		= genl_bind,
-		.unbind		= genl_unbind,
 	};
 
 	/* we'll bump the group number right afterwards */

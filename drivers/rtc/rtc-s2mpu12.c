@@ -172,11 +172,13 @@ static int s2m_rtc_read_time(struct device *dev, struct rtc_time *tm)
 		goto out;
 	}
 
+#ifdef BATTERY_INFO_DEBUG
 	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02x)%s\n",
 			__func__, data[RTC_YEAR] + 2000, data[RTC_MONTH],
 			data[RTC_DATE], data[RTC_HOUR] & 0x1f, data[RTC_MIN],
 			data[RTC_SEC], data[RTC_WEEKDAY],
 			data[RTC_HOUR] & HOUR_PM_MASK ? "PM" : "AM");
+#endif
 
 	s2m_data_to_tm(data, tm);
 	ret = rtc_valid_tm(tm);
@@ -662,9 +664,7 @@ static irqreturn_t s2m_rtc_boot_alarm_irq(int irq, void *data)
 
 static const struct rtc_class_ops s2m_rtc_ops = {
 	.read_time = s2m_rtc_read_time,
-#ifdef CONFIG_RTC_HIGH_RES
 	.read_hrtime = s2m_rtc_read_hrtime,
-#endif /* CONFIG_RTC_HIGH_RES */
 	.set_time = s2m_rtc_set_time,
 	.read_alarm = s2m_rtc_read_alarm,
 	.set_alarm = s2m_rtc_set_alarm,

@@ -671,7 +671,7 @@ bool ttm_bo_eviction_valuable(struct ttm_buffer_object *bo,
 	/* Don't evict this BO if it's outside of the
 	 * requested placement range
 	 */
-	if (place->fpfn >= (bo->mem.start + bo->mem.size) ||
+	if (place->fpfn >= (bo->mem.start + bo->mem.num_pages) ||
 	    (place->lpfn && place->lpfn <= bo->mem.start))
 		return false;
 
@@ -798,7 +798,7 @@ static int ttm_bo_add_move_fence(struct ttm_buffer_object *bo,
 	if (fence) {
 		reservation_object_add_shared_fence(bo->resv, fence);
 
-		ret = reservation_object_reserve_shared(bo->resv);
+		ret = reservation_object_reserve_shared(bo->resv, 1);
 		if (unlikely(ret))
 			return ret;
 
@@ -903,7 +903,7 @@ int ttm_bo_mem_space(struct ttm_buffer_object *bo,
 	bool has_erestartsys = false;
 	int i, ret;
 
-	ret = reservation_object_reserve_shared(bo->resv);
+	ret = reservation_object_reserve_shared(bo->resv, 1);
 	if (unlikely(ret))
 		return ret;
 

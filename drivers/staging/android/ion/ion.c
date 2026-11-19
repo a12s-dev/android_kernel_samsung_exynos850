@@ -139,7 +139,6 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	nr_alloc_peak = atomic_long_read(&heap->total_allocated_peak);
 	if (nr_alloc_cur > nr_alloc_peak)
 		atomic_long_set(&heap->total_allocated_peak, nr_alloc_cur);
-
 	track_buffer_created(buffer);
 	return buffer;
 
@@ -193,6 +192,9 @@ void *ion_buffer_kmap_get(struct ion_buffer *buffer)
 	ion_event_begin();
 
 	if (buffer->kmap_cnt) {
+		if (buffer->kmap_cnt == INT_MAX)
+			return ERR_PTR(-EOVERFLOW);
+
 		buffer->kmap_cnt++;
 		return buffer->vaddr;
 	}
@@ -371,7 +373,6 @@ static void ion_dma_buf_kunmap(struct dma_buf *dmabuf, unsigned long offset,
 		ion_buffer_kmap_put(buffer);
 		mutex_unlock(&buffer->lock);
 	}
-
 }
 
 static void *ion_dma_buf_vmap(struct dma_buf *dmabuf)
@@ -403,18 +404,15 @@ static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 					enum dma_data_direction direction)
 {
 	struct ion_buffer *buffer = dmabuf->priv;
-	struct dma_buf_attachment *att;
+	struct ion_dma_buf_attachment *a;
 
-
-	mutex_lock(&dmabuf->lock);
-	list_for_each_entry(att, &dmabuf->attachments, node) {
-		struct sg_table *table = att->priv;
-
-		dma_sync_sg_for_cpu(att->dev, table->sgl, table->nents,
+	mutex_lock(&buffer->lock);
+	list_for_each_entry(a, &buffer->attachments, list) {
+		dma_sync_sg_for_cpu(a->dev, a->table->sgl, a->table->nents,
 				    direction);
 	}
-	mutex_unlock(&dmabuf->lock);
-	
+	mutex_unlock(&buffer->lock);
+
 	return 0;
 }
 
@@ -422,16 +420,14 @@ static int ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
 				      enum dma_data_direction direction)
 {
 	struct ion_buffer *buffer = dmabuf->priv;
-	struct dma_buf_attachment *att;
+	struct ion_dma_buf_attachment *a;
 
-	mutex_lock(&dmabuf->lock);
-	list_for_each_entry(att, &dmabuf->attachments, node) {
-		struct sg_table *table = att->priv;
-
-		dma_sync_sg_for_device(att->dev, table->sgl, table->nents,
+	mutex_lock(&buffer->lock);
+	list_for_each_entry(a, &buffer->attachments, list) {
+		dma_sync_sg_for_device(a->dev, a->table->sgl, a->table->nents,
 				       direction);
 	}
-	mutex_unlock(&dmabuf->lock);
+	mutex_unlock(&buffer->lock);
 
 	return 0;
 }
@@ -612,7 +608,7 @@ static inline void __ion_account_print_locked(void)
 		pr_info("[%d]       %16s(%5u) %8zu\n", i, ion_size_acc[i].task_comm,
 			ion_size_acc[i].pid, ion_size_acc[i].size / SZ_1K);
 		if (heaviest_size < ion_size_acc[i].size) {
-			heaviest_size = ion_size_acc[i].size ;
+			heaviest_size = ion_size_acc[i].size;
 			heaviest_idx = i;
 		}
 		total += ion_size_acc[i].size;
@@ -724,9 +720,7 @@ struct ion_heap *ion_get_heap_by_name(const char *heap_name)
 static const struct file_operations ion_fops = {
 	.owner          = THIS_MODULE,
 	.unlocked_ioctl = ion_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl	= ion_ioctl,
-#endif
+	.compat_ioctl	= compat_ptr_ioctl,
 };
 
 static int debug_shrink_set(void *data, u64 val)

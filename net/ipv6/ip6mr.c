@@ -245,7 +245,9 @@ static int __net_init ip6mr_rules_init(struct net *net)
 	return 0;
 
 err2:
+	rtnl_lock();
 	ip6mr_free_table(mrt);
+	rtnl_unlock();
 err1:
 	fib_rules_unregister(ops);
 	return err;
@@ -1062,7 +1064,7 @@ static int ip6mr_cache_report(struct mr_table *mrt, struct sk_buff *pkt,
 		   And all this only to mangle msg->im6_msgtype and
 		   to set msg->im6_mbz to "mbz" :-)
 		 */
-		skb_push(skb, -skb_network_offset(pkt));
+		__skb_pull(skb, skb_network_offset(pkt));
 
 		skb_push(skb, sizeof(*msg));
 		skb_reset_transport_header(skb);
@@ -1673,7 +1675,7 @@ int ip6_mroute_setsockopt(struct sock *sk, int optname, char __user *optval, uns
 	case MRT6_ADD_MFC:
 	case MRT6_DEL_MFC:
 		parent = -1;
-		/* fall through */
+		fallthrough;
 	case MRT6_ADD_MFC_PROXY:
 	case MRT6_DEL_MFC_PROXY:
 		if (optlen < sizeof(mfc))
@@ -2441,6 +2443,18 @@ errout:
 
 static int ip6mr_rtm_dumproute(struct sk_buff *skb, struct netlink_callback *cb)
 {
+	const struct nlmsghdr *nlh = cb->nlh;
+	struct fib_dump_filter filter = {};
+
+	if (cb->strict_check) {
+		int err;
+
+		err = ip_valid_fib_dump_req(sock_net(skb->sk), nlh,
+					    &filter, cb);
+		if (err < 0)
+			return err;
+	}
+
 	return mr_rtm_dumproute(skb, cb, ip6mr_mr_table_iter,
 				_ip6mr_fill_mroute, &mfc_unres_lock);
 }

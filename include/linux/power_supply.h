@@ -196,8 +196,11 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_PM_FACTORY,
 	POWER_SUPPLY_PROP_TDIE,
 	POWER_SUPPLY_PROP_FAST_IAVG,
+//	POWER_SUPPLY_PROP_USBPD_RESET,
+//	POWER_SUPPLY_PROP_USBPD_TEST_READ,
 	POWER_SUPPLY_PROP_MAX,
 	POWER_SUPPLY_EXT_PROP_MAX = POWER_SUPPLY_PROP_MAX + 256,
+	POWER_SUPPLY_LSI_PROP_MAX = POWER_SUPPLY_EXT_PROP_MAX + 256,
 };
 
 enum power_supply_type {
@@ -412,8 +415,9 @@ extern int power_supply_get_battery_info(struct power_supply *psy,
 					 struct power_supply_battery_info *info);
 extern void power_supply_changed(struct power_supply *psy);
 extern int power_supply_am_i_supplied(struct power_supply *psy);
-extern int power_supply_set_input_current_limit_from_supplier(
-					 struct power_supply *psy);
+int power_supply_get_property_from_supplier(struct power_supply *psy,
+					    enum power_supply_property psp,
+					    union power_supply_propval *val);
 extern int power_supply_set_battery_charged(struct power_supply *psy);
 
 #ifdef CONFIG_POWER_SUPPLY

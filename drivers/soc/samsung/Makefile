@@ -13,11 +13,13 @@ obj-$(CONFIG_EXYNOS_PMU_ARM_DRIVERS)	+= exynos3250-pmu.o exynos4-pmu.o \
 # ACPM
 obj-$(CONFIG_EXYNOS_ACPM)       += acpm/
 
+obj-$(CONFIG_EXYNOS_RGT)        += exynos-rgt.o
 obj-$(CONFIG_EXYNOS_FLEXPMU_DBG)        += exynos-flexpmu-dbg.o
 obj-$(CONFIG_EXYNOS_PM_DOMAINS) += pm_domains.o
 obj-$(CONFIG_EXYNOS_CHIPID)	+= exynos-chipid.o
 
 # SCI
+obj-$(CONFIG_EXYNOS_SCI)	+= exynos-sci.o
 
 # ECT
 obj-$(CONFIG_ECT)               += ect_parser.o
@@ -31,9 +33,12 @@ obj-$(CONFIG_EXYNOS_REBOOT)	+= exynos-reboot.o
 # DEBUG
 obj-$(CONFIG_EXYNOS_DEBUG)       += debug/
 
+obj-$(CONFIG_EXYNOS_BCM_DBG)    += exynos-bcm_dbg.o exynos-bcm_dbg-dt.o
+obj-$(CONFIG_EXYNOS_BCM_DBG_DUMP)       += exynos-bcm_dbg-dump.o
 
 # DVFS
 obj-$(CONFIG_EXYNOS_DVFS_MANAGER)	+= exynos-dm.o
+obj-$(CONFIG_EXYNOS_MCINFO)	+= exynos-mcinfo.o
 
 #PM
 obj-$(CONFIG_ARCH_EXYNOS)	+= exynos-powermode.o
@@ -52,10 +57,13 @@ obj-$(CONFIG_EXYNOS_SECURE_LOG)	+= exynos-seclog.o
 obj-$(CONFIG_EXYNOS_SSP)	+= exynos-ssp.o
 
 # OCP
+obj-$(CONFIG_EXYNOS_OCP)        += exynos-ocp.o
 
 # HIU
+obj-$(CONFIG_EXYNOS_PSTATE_HAFM)        += exynos-hiu.o
 
 # Exynos PPMPU fail detector
+obj-$(CONFIG_EXYNOS_PPMPU_FAIL_DETECTOR)	+= exynos-ppmpu.o
 
 # Exynos TZASC fail detector
 obj-$(CONFIG_EXYNOS_TZASC_FAIL_DETECTOR)	+= exynos-tzasc.o
@@ -73,6 +81,7 @@ obj-$(CONFIG_EXYNOS_SDM) += exynos-sdm.o
 obj-$(CONFIG_EXYNOS_MODEM_IF) += cpif/
 
 # DIT IP packet translator
+obj-$(CONFIG_HW_FORWARD)	+= dit/
 
 # GNSS interface driver
 obj-$(CONFIG_EXYNOS_GNSS_IF) += gnssif/
@@ -80,4 +89,4 @@ obj-$(CONFIG_EXYNOS_GNSS_IF) += gnssif/
 # Exynos CPU Performance
 obj-$(CONFIG_EXYNOS_CPU_PERF)	+= exynos_cpu_perf/
 
-obj-$(CONFIG_M12_MODEL_OVERLAY)	+= m12-model/
+obj-$(CONFIG_EXYNOS_DEBUG_FREQ)	+= exynos_debug_freq.o

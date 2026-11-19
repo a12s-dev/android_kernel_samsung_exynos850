@@ -651,12 +651,13 @@ static inline void thermal_zone_device_update_temp(
 static inline void thermal_zone_set_trips(struct thermal_zone_device *tz)
 { }
 static inline struct thermal_cooling_device *
-thermal_cooling_device_register(char *type, void *devdata,
+thermal_cooling_device_register(const char *type, void *devdata,
 	const struct thermal_cooling_device_ops *ops)
 { return ERR_PTR(-ENODEV); }
 static inline struct thermal_cooling_device *
 thermal_of_cooling_device_register(struct device_node *np,
-	char *type, void *devdata, const struct thermal_cooling_device_ops *ops)
+	const char *type, void *devdata,
+	const struct thermal_cooling_device_ops *ops)
 { return ERR_PTR(-ENODEV); }
 static inline void thermal_cooling_device_unregister(
 	struct thermal_cooling_device *cdev)
@@ -666,7 +667,6 @@ static inline struct thermal_zone_device *thermal_zone_get_zone_by_name(
 { return ERR_PTR(-ENODEV); }
 static inline struct thermal_zone_device *thermal_zone_get_zone_by_cool_np(
 		struct device_node *cool_np)
-{ return ERR_PTR(-ENODEV); }
 static inline struct thermal_cooling_device *thermal_zone_get_cdev_by_name(
 		const char *name)
 { return ERR_PTR(-ENODEV); }

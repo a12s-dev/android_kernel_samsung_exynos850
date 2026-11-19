@@ -42,7 +42,7 @@
 #include <net/neighbour.h>
 #include <net/route.h>
 #include <net/netevent.h>
-#include <net/addrconf.h>
+#include <net/ipv6_stub.h>
 #include <net/ip6_route.h>
 #include <rdma/ib_addr.h>
 #include <rdma/ib.h>
@@ -84,8 +84,8 @@ static inline bool ib_nl_is_good_ip_resp(const struct nlmsghdr *nlh)
 	if (nlh->nlmsg_flags & RDMA_NL_LS_F_ERR)
 		return false;
 
-	ret = nla_parse(tb, LS_NLA_TYPE_MAX - 1, nlmsg_data(nlh),
-			nlmsg_len(nlh), ib_nl_addr_policy, NULL);
+	ret = nla_parse_deprecated(tb, LS_NLA_TYPE_MAX - 1, nlmsg_data(nlh),
+				   nlmsg_len(nlh), ib_nl_addr_policy, NULL);
 	if (ret)
 		return false;
 
@@ -571,13 +571,12 @@ static void process_one_req(struct work_struct *_work)
 	req->callback = NULL;
 
 	spin_lock_bh(&lock);
+	/*
+	 * Although the work will normally have been canceled by the workqueue,
+	 * it can still be requeued as long as it is on the req_list.
+	 */
+	cancel_delayed_work(&req->work);
 	if (!list_empty(&req->list)) {
-		/*
-		 * Although the work will normally have been canceled by the
-		 * workqueue, it can still be requeued as long as it is on the
-		 * req_list.
-		 */
-		cancel_delayed_work(&req->work);
 		list_del_init(&req->list);
 		kfree(req);
 	}

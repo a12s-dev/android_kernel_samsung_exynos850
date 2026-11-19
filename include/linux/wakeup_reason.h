@@ -35,5 +35,4 @@ static inline void clear_wakeup_reasons(void) { }
 #endif
 void log_wakeup_reason_name(const char *name);
 void log_wakeup_reason(int irq);
-
 #endif /* _LINUX_WAKEUP_REASON_H */

@@ -185,6 +185,7 @@ static inline unsigned int ima_hash_key(u8 *digest)
 	hook(KEXEC_KERNEL_CHECK)	\
 	hook(KEXEC_INITRAMFS_CHECK)	\
 	hook(POLICY_CHECK)		\
+	hook(KEXEC_CMDLINE)		\
 	hook(MAX_CHECK)
 #define __ima_hook_enumify(ENUM)	ENUM,
 
@@ -298,6 +299,7 @@ static inline int ima_read_xattr(struct dentry *dentry,
 #ifdef CONFIG_IMA_LSM_RULES
 
 #define security_filter_rule_init security_audit_rule_init
+#define security_filter_rule_free security_audit_rule_free
 #define security_filter_rule_match security_audit_rule_match
 
 #else
@@ -306,6 +308,10 @@ static inline int security_filter_rule_init(u32 field, u32 op, char *rulestr,
 					    void **lsmrule)
 {
 	return -EINVAL;
+}
+
+static inline void security_filter_rule_free(void *lsmrule)
+{
 }
 
 static inline int security_filter_rule_match(u32 secid, u32 field, u32 op,

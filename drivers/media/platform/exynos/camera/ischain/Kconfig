@@ -11,6 +11,14 @@ choice
 	help
 	  Select Pablo ISP Version.
 
+source "drivers/media/platform/exynos/camera/ischain/is-v7_0_0/Kconfig"
+if SOC_EXYNOS9830_EVT0
+source "drivers/media/platform/exynos/camera/ischain/is-v8_0_0/Kconfig"
+endif
+if SOC_EXYNOS9830
+source "drivers/media/platform/exynos/camera/ischain/is-v8_1_0/Kconfig"
+endif
+source "drivers/media/platform/exynos/camera/ischain/is-v8_10_0/Kconfig"
 source "drivers/media/platform/exynos/camera/ischain/is-v8_20_0/Kconfig"
 
 endchoice

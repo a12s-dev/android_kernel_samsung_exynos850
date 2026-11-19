@@ -55,7 +55,7 @@
 #include <asm/daifflags.h>
 #include <asm/mmu_context.h>
 #include <asm/numa.h>
-#include <asm/pgtable.h>
+#include <linux/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/processor.h>
 #include <asm/scs.h>
@@ -1032,7 +1032,6 @@ static const char *system_state_show[SYSTEM_END] = {
 	"SYSTEM_POWER_OFF",
 	"SYSTEM_RESTART",
 };
-
 /*
  * The number of CPUs online, not counting this CPU (which may not be
  * fully online and so not counted in num_online_cpus()).
@@ -1051,6 +1050,7 @@ void smp_send_stop(void)
 	int cpu;
 
 	if (num_other_online_cpus()) {
+
 		cpumask_copy(&mask, cpu_online_mask);
 		cpumask_clear_cpu(smp_processor_id(), &mask);
 		cpumask_copy(&cpu_stop_mask, &mask);

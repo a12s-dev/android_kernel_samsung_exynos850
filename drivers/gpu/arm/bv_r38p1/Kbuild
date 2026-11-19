@@ -147,6 +147,7 @@ subdir-ccflags-y += $(ccflags-y)
 #
 obj-$(CONFIG_MALI_MIDGARD) += mali_kbase.o
 # obj-$(CONFIG_MALI_ARBITRATION) += arbitration/
+obj-$(CONFIG_MALI_KUTF)    += tests/
 
 mali_kbase-y := \
     mali_kbase_cache_policy.o \
@@ -188,9 +189,12 @@ mali_kbase-y := \
     mali_kbase_trace_gpu_mem.o \
     mali_kbase_pbha.o
 
+mali_kbase-$(CONFIG_DEBUG_FS) += mali_kbase_pbha_debugfs.o
 
+mali_kbase-$(CONFIG_MALI_CINSTR_GWT) += mali_kbase_gwt.o
 
 mali_kbase-$(CONFIG_SYNC) += \
+    mali_kbase_sync_android.o \
     mali_kbase_sync_common.o
 
 mali_kbase-$(CONFIG_SYNC_FILE) += \
@@ -199,6 +203,9 @@ mali_kbase-$(CONFIG_SYNC_FILE) += \
     mali_kbase_sync_common.o
 
 ifeq ($(CONFIG_MALI_CSF_SUPPORT),y)
+    mali_kbase-y += \
+        mali_kbase_hwcnt_backend_csf.o \
+        mali_kbase_hwcnt_backend_csf_if_fw.o
 else
     mali_kbase-y += \
         mali_kbase_jm.o \

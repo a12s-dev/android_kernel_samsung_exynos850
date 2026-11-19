@@ -91,6 +91,11 @@ static int try_to_freeze_tasks(bool user_only)
 			break;
 
 		if (pm_wakeup_pending()) {
+#ifdef CONFIG_PM_SLEEP
+			pm_get_active_wakeup_sources(suspend_abort,
+				MAX_SUSPEND_ABORT_LEN);
+			log_suspend_abort_reason(suspend_abort);
+#endif
 			wakeup = true;
 			break;
 		}
@@ -137,7 +142,6 @@ static int try_to_freeze_tasks(bool user_only)
 			}
 		}
 		read_unlock(&tasklist_lock);
-
 		secdbg_exin_set_unfz(sys_state[system_state], -1);
 		if (IS_ENABLED(CONFIG_SEC_DEBUG_FAIL_TO_FREEZE_PANIC))
 			panic("fail to freeze tasks: %s", secdbg_exin_get_unfz());
@@ -145,10 +149,8 @@ static int try_to_freeze_tasks(bool user_only)
 		pr_cont("(elapsed %d.%03d seconds) ", elapsed_msecs / 1000,
 			elapsed_msecs % 1000);
 	}
-
 	secdbg_base_set_unfrozen_task((uint64_t)NULL);
 	secdbg_base_set_unfrozen_task_count((uint64_t)0);
-
 	return todo ? -EBUSY : 0;
 }
 

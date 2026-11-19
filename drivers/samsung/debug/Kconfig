@@ -205,6 +205,20 @@ config SEC_DEBUG_BAD_STACK_CAREFULLY
 	help
 	  This options prevent infinite abort loop about stack corruption.
 
+config SEC_DEBUG_OBJECTS_FREE
+	bool "Enable debug objects when freeing activate objects"
+	depends on DEBUG_OBJECTS_FREE
+	default y
+	help
+	  This option enalbles to debug when freeing activate objects.
+
+config SEC_DEBUG_OBJECTS_FIXUP
+	bool "Enable debug objects fixup"
+	depends on DEBUG_OBJECTS_FREE
+	default y
+	help
+	  This option enalbles to debug abnormal state transition of debug_object.
+
 config SEC_DEBUG_FPSIMD_CHECK_CONTEXT
 	bool "Detect for fpsimd has corruption"
 	depends on SEC_DEBUG
@@ -305,6 +319,13 @@ config SEC_DEBUG_QSPIN_OWNER
 	help
 	  This option enables spinlock owner information.
 	  The CPU number of owner is written into lock value.
+
+config SEC_DUMP_SINK
+	tristate "Enable to dump_sink"
+	depends on SEC_DEBUG
+	default n
+	help
+	  This option enables dump sink.
 
 config SEC_DEBUG_DUMP_SUMMARY
 	bool "Enable dump summary in rmem"

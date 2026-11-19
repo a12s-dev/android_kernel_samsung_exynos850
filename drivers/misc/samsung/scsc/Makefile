@@ -58,12 +58,20 @@ endif
 ccflags-$(CONFIG_SCSC_MX450_GDB_SUPPORT) += -DCONFIG_SCSC_MX450_GDB_SUPPORT
 
 # PCI-E MIF
+obj-$(CONFIG_SCSC_PCIE) += scsc_pcie_mif.o
+scsc_pcie_mif-y += pcie_mif_module.o pcie_mif.o pcie_proc.o pcie_mbox.o pcie_mbox_intgen.o
 
 obj-$(CONFIG_SCSC_PLATFORM) += scsc_platform_mif.o
 
 scsc_platform_mif-$(CONFIG_SCSC_PLATFORM) += \
 	platform_mif_module.o
 
+ifeq ($(CONFIG_SOC_EXYNOS9610),y)
+	scsc_platform_mif-$(CONFIG_SCSC_PLATFORM) += platform_mif_9610.o
+endif
+ifeq ($(CONFIG_SOC_EXYNOS9630),y)
+	scsc_platform_mif-$(CONFIG_SCSC_PLATFORM) += platform_mif_9630.o
+endif
 ifeq ($(CONFIG_SOC_EXYNOS3830),y)
 	scsc_platform_mif-$(CONFIG_SCSC_PLATFORM) += platform_mif_3830.o
 endif
@@ -72,6 +80,12 @@ ifeq ($(CONFIG_SOC_EXYNOS7570),y)
 endif
 ifeq ($(CONFIG_SOC_EXYNOS7872),y)
 	scsc_platform_mif-$(CONFIG_SCSC_PLATFORM) += platform_mif.o
+endif
+ifeq ($(CONFIG_SOC_EXYNOS7885),y)
+	scsc_platform_mif-$(CONFIG_SCSC_PLATFORM) += platform_mif_7885.o
+endif
+ifeq ($(CONFIG_SOC_S5E9815),y)
+	scsc_platform_mif-$(CONFIG_SCSC_PLATFORM) += platform_mif_9815.o
 endif
 #core_module for static functions and registration client module (all the service driver modules -wlan, bt,...-)
 #core for instance
@@ -104,11 +118,15 @@ scsc_mx-y += \
 
 scsc_mx-$(CONFIG_SCSC_MXLOGGER) += mxlogger.o
 
+scsc_mx-$(CONFIG_SCSC_SMAPPER) += mifsmapper.o
 
 scsc_mx-$(CONFIG_SCSC_WLBTD) += scsc_wlbtd.o
 
+scsc_mx-$(CONFIG_SCSC_QOS) += mifqos.o
 
+scsc_mx-$(CONFIG_SCSC_LAST_PANIC_IN_DRAM) += scsc_log_in_dram.o
 
+scsc_mx-$(CONFIG_EXYNOS_SYSTEM_EVENT) += mxman_sysevent.o
 
 ifneq ($(CONFIG_SCSC_CM_MX_CLIENT_TEST),n)
 obj-$(CONFIG_SCSC_CM_MX_CLIENT_TEST) += mx_client_test.o
@@ -120,6 +138,13 @@ obj-$(CONFIG_SCSC_MMAP) += scsc_mmap.o
 scsc_mmap-y += mx_mmap.o
 endif
 
+ifneq ($(CONFIG_SCSC_CLK20MHZ),n)
+obj-$(CONFIG_SCSC_CLK20MHZ) += scsc_mx140_clk.o
+scsc_mx140_clk-y += mx140_clk.o
+ifeq ($(CONFIG_SCSC_CLK20MHZ_TEST),y)
+scsc_mx140_clk-y += mx140_clk_test.o
+endif
+endif
 
 ifneq ($(CONFIG_SCSC_FM),n)
 obj-$(CONFIG_SCSC_FM) += scsc_mx250_fm.o
@@ -129,6 +154,8 @@ scsc_mx250_fm-y += mx250_fm_test.o
 endif
 endif
 
+obj-$(CONFIG_SCSC_DBG_SAMPLER) += scsc_dbg_sampler.o
+scsc_dbg_sampler-y += mx_dbg_sampler.o
 
 endif
 

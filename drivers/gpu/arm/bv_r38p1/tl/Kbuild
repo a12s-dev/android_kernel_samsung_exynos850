@@ -26,6 +26,7 @@ mali_kbase-y += \
 
 
 ifeq ($(CONFIG_MALI_CSF_SUPPORT),y)
+    mali_kbase-y += tl/backend/mali_kbase_timeline_csf.o
 else
     mali_kbase-y += tl/backend/mali_kbase_timeline_jm.o
 endif

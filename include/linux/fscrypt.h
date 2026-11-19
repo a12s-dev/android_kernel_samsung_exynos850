@@ -15,6 +15,7 @@
 
 #include <linux/fs.h>
 #include <linux/mm.h>
+#include <linux/parser.h>
 #include <linux/slab.h>
 #include <uapi/linux/fscrypt.h>
 
@@ -22,6 +23,7 @@
 
 union fscrypt_context;
 struct fscrypt_info;
+struct seq_file;
 
 struct fscrypt_str {
 	unsigned char *name;
@@ -43,11 +45,7 @@ struct fscrypt_name {
 #define fname_len(p)		((p)->disk_name.len)
 
 /* Maximum value for the third parameter of fscrypt_operations.set_context(). */
-#ifdef CONFIG_FSCRYPT_SDP
-#define FSCRYPT_SET_CONTEXT_MAX_SIZE	44
-#else
 #define FSCRYPT_SET_CONTEXT_MAX_SIZE	40
-#endif
 
 #ifdef CONFIG_FS_ENCRYPTION
 /*
@@ -61,14 +59,12 @@ struct fscrypt_name {
 struct fscrypt_operations {
 	unsigned int flags;
 	const char *key_prefix;
-	int (*get_context)(struct inode *, void *, size_t);
-	int (*set_context)(struct inode *, const void *, size_t, void *);
-#ifdef CONFIG_FSCRYPT_SDP
-	int (*get_knox_context)(struct inode *, const char *, void *, size_t);
-	int (*set_knox_context)(struct inode *, const char *, const void *, size_t, void *);
-#endif
-	bool (*dummy_context)(struct inode *);
-	bool (*empty_dir)(struct inode *);
+	int (*get_context)(struct inode *inode, void *ctx, size_t len);
+	int (*set_context)(struct inode *inode, const void *ctx, size_t len,
+			   void *fs_data);
+	const union fscrypt_context *(*get_dummy_context)(
+		struct super_block *sb);
+	bool (*empty_dir)(struct inode *inode);
 	unsigned int max_namelen;
 	bool (*has_stable_inodes)(struct super_block *sb);
 	void (*get_ino_and_lblk_bits)(struct super_block *sb,
@@ -101,10 +97,12 @@ static inline bool fscrypt_needs_contents_encryption(const struct inode *inode)
 	return IS_ENCRYPTED(inode) && S_ISREG(inode->i_mode);
 }
 
-static inline bool fscrypt_dummy_context_enabled(struct inode *inode)
+static inline const union fscrypt_context *
+fscrypt_get_dummy_context(struct super_block *sb)
 {
-	return inode->i_sb->s_cop->dummy_context &&
-		inode->i_sb->s_cop->dummy_context(inode);
+	if (!sb->s_cop->get_dummy_context)
+		return NULL;
+	return sb->s_cop->get_dummy_context(sb);
 }
 
 /*
@@ -117,6 +115,35 @@ static inline bool fscrypt_dummy_context_enabled(struct inode *inode)
 static inline void fscrypt_handle_d_move(struct dentry *dentry)
 {
 	dentry->d_flags &= ~DCACHE_ENCRYPTED_NAME;
+}
+
+/**
+ * fscrypt_is_nokey_name() - test whether a dentry is a no-key name
+ * @dentry: the dentry to check
+ *
+ * This returns true if the dentry is a no-key dentry.  A no-key dentry is a
+ * dentry that was created in an encrypted directory that hasn't had its
+ * encryption key added yet.  Such dentries may be either positive or negative.
+ *
+ * When a filesystem is asked to create a new filename in an encrypted directory
+ * and the new filename's dentry is a no-key dentry, it must fail the operation
+ * with ENOKEY.  This includes ->create(), ->mkdir(), ->mknod(), ->symlink(),
+ * ->rename(), and ->link().  (However, ->rename() and ->link() are already
+ * handled by fscrypt_prepare_rename() and fscrypt_prepare_link().)
+ *
+ * This is necessary because creating a filename requires the directory's
+ * encryption key, but just checking for the key on the directory inode during
+ * the final filesystem operation doesn't guarantee that the key was available
+ * during the preceding dentry lookup.  And the key must have already been
+ * available during the dentry lookup in order for it to have been checked
+ * whether the filename already exists in the directory and for the new file's
+ * dentry not to be invalidated due to it incorrectly having the no-key flag.
+ *
+ * Return: %true if the dentry is a no-key name
+ */
+static inline bool fscrypt_is_nokey_name(const struct dentry *dentry)
+{
+	return dentry->d_flags & DCACHE_ENCRYPTED_NAME;
 }
 
 /* crypto.c */
@@ -158,6 +185,22 @@ int fscrypt_has_permitted_context(struct inode *parent, struct inode *child);
 int fscrypt_inherit_context(struct inode *parent, struct inode *child,
 			    void *fs_data, bool preload);
 
+struct fscrypt_dummy_context {
+	const union fscrypt_context *ctx;
+};
+
+int fscrypt_set_test_dummy_encryption(struct super_block *sb,
+				      const substring_t *arg,
+				      struct fscrypt_dummy_context *dummy_ctx);
+void fscrypt_show_test_dummy_encryption(struct seq_file *seq, char sep,
+					struct super_block *sb);
+static inline void
+fscrypt_free_dummy_context(struct fscrypt_dummy_context *dummy_ctx)
+{
+	kfree(dummy_ctx->ctx);
+	dummy_ctx->ctx = NULL;
+}
+
 /* keyring.c */
 void fscrypt_sb_free(struct super_block *sb);
 int fscrypt_ioctl_add_key(struct file *filp, void __user *arg);
@@ -170,17 +213,6 @@ int fscrypt_get_encryption_info(struct inode *inode);
 void fscrypt_put_encryption_info(struct inode *inode);
 void fscrypt_free_inode(struct inode *inode);
 int fscrypt_drop_inode(struct inode *inode);
-#ifdef CONFIG_FSCRYPT_SDP
-extern int fscrypt_get_encryption_key(
-						struct fscrypt_info *crypt_info,
-						struct fscrypt_key *key);
-extern int fscrypt_get_encryption_key_classified(
-						struct fscrypt_info *crypt_info,
-						struct fscrypt_key *key);
-extern int fscrypt_get_encryption_kek(
-						struct fscrypt_info *crypt_info,
-						struct fscrypt_key *kek);
-#endif
 
 /* fname.c */
 int fscrypt_setup_filename(struct inode *inode, const struct qstr *iname,
@@ -226,6 +258,8 @@ int __fscrypt_encrypt_symlink(struct inode *inode, const char *target,
 const char *fscrypt_get_symlink(struct inode *inode, const void *caddr,
 				unsigned int max_size,
 				struct delayed_call *done);
+int fscrypt_symlink_getattr(const struct path *path, struct kstat *stat);
+
 #else  /* !CONFIG_FS_ENCRYPTION */
 
 static inline bool fscrypt_has_encryption_key(const struct inode *inode)
@@ -238,13 +272,19 @@ static inline bool fscrypt_needs_contents_encryption(const struct inode *inode)
 	return false;
 }
 
-static inline bool fscrypt_dummy_context_enabled(struct inode *inode)
+static inline const union fscrypt_context *
+fscrypt_get_dummy_context(struct super_block *sb)
 {
-	return false;
+	return NULL;
 }
 
 static inline void fscrypt_handle_d_move(struct dentry *dentry)
 {
+}
+
+static inline bool fscrypt_is_nokey_name(const struct dentry *dentry)
+{
+	return false;
 }
 
 /* crypto.c */
@@ -335,6 +375,20 @@ static inline int fscrypt_inherit_context(struct inode *parent,
 	return -EOPNOTSUPP;
 }
 
+struct fscrypt_dummy_context {
+};
+
+static inline void fscrypt_show_test_dummy_encryption(struct seq_file *seq,
+						      char sep,
+						      struct super_block *sb)
+{
+}
+
+static inline void
+fscrypt_free_dummy_context(struct fscrypt_dummy_context *dummy_ctx)
+{
+}
+
 /* keyring.c */
 static inline void fscrypt_sb_free(struct super_block *sb)
 {
@@ -380,27 +434,6 @@ static inline void fscrypt_free_inode(struct inode *inode)
 static inline int fscrypt_drop_inode(struct inode *inode)
 {
 	return 0;
-}
-
-static inline int fscrypt_get_encryption_key(
-						struct fscrypt_info *crypt_info,
-						struct fscrypt_key *key)
-{
-	return -EOPNOTSUPP;
-}
-
-static inline int fscrypt_get_encryption_key_classified(
-						struct fscrypt_info *crypt_info,
-						struct fscrypt_key *key)
-{
-	return -EOPNOTSUPP;
-}
-
-static inline int fscrypt_get_encryption_kek(
-						struct fscrypt_info *crypt_info,
-						struct fscrypt_key *kek)
-{
-	return -EOPNOTSUPP;
 }
 
  /* fname.c */
@@ -532,6 +565,13 @@ static inline const char *fscrypt_get_symlink(struct inode *inode,
 {
 	return ERR_PTR(-EOPNOTSUPP);
 }
+
+static inline int fscrypt_symlink_getattr(const struct path *path,
+					  struct kstat *stat)
+{
+	return -EOPNOTSUPP;
+}
+
 #endif	/* !CONFIG_FS_ENCRYPTION */
 
 /* inline_crypt.c */
@@ -799,7 +839,7 @@ static inline int fscrypt_prepare_symlink(struct inode *dir,
 					  unsigned int max_len,
 					  struct fscrypt_str *disk_link)
 {
-	if (IS_ENCRYPTED(dir) || fscrypt_dummy_context_enabled(dir))
+	if (IS_ENCRYPTED(dir) || fscrypt_get_dummy_context(dir->i_sb) != NULL)
 		return __fscrypt_prepare_symlink(dir, len, max_len, disk_link);
 
 	disk_link->name = (unsigned char *)target;

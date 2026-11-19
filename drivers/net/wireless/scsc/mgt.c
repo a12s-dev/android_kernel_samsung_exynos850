@@ -551,29 +551,17 @@ mac_default:
 
 static void write_wifi_version_info_file(struct slsi_dev *sdev)
 {
+#ifdef CONFIG_SCSC_WLBTD
 #if defined(SCSC_SEP_VERSION) && (SCSC_SEP_VERSION >= 9)
 	char *filepath = "/data/vendor/conn/.wifiver.info";
 #else
 	char *filepath = "/data/misc/conn/.wifiver.info";
 #endif
+#endif
 	char buf[256];
 	char build_id_fw[128];
 	char build_id_drv[64];
 
-	/* For 5.4 kernel CONFIG_SCSC_WLBTD will be defined so filp_open will not be used */
-#ifndef CONFIG_SCSC_WLBTD
-	struct file *fp = NULL;
-
-	fp = filp_open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-
-	if (IS_ERR(fp)) {
-		SLSI_WARN(sdev, "version file wasn't found\n");
-		return;
-	} else if (!fp) {
-		SLSI_WARN(sdev, "%s doesn't exist.\n", filepath);
-		return;
-	}
-#endif
 #ifndef SLSI_TEST_DEV
 	mxman_get_fw_version(build_id_fw, 128);
 	mxman_get_driver_version(build_id_drv, 64);
@@ -615,10 +603,6 @@ static void write_wifi_version_info_file(struct slsi_dev *sdev)
 #ifdef SCSC_SEP_VERSION
 #ifdef CONFIG_SCSC_WLBTD
 	wlbtd_write_file(filepath, buf);
-#else
-	kernel_write(fp, buf, strlen(buf), 0);
-	if (fp)
-		filp_close(fp, NULL);
 #endif
 
 	SLSI_INFO(sdev, "Succeed to write firmware/host information to .wifiver.info\n");
@@ -963,10 +947,7 @@ int slsi_start(struct slsi_dev *sdev, struct net_device *dev)
 			offset += snprintf(buf + offset, sizeof(buf), "HalFn_getValidChannels=yes\n");
 /* If WLBTD is being used which we will be doing for 5.4 kernel project we will use daemon for writing file */
 #ifdef CONFIG_SCSC_WLBTD
-			wlbtd_write_file(filepath, buf);
-#else
-			/* Will only be used for old projects before WLBTD was introduced (Android O)*/
-			kernel_write(fp, buf, strlen(buf), 0);
+		wlbtd_write_file(filepath, buf);
 #endif
 			if (fp)
 				filp_close(fp, NULL);
@@ -3965,7 +3946,7 @@ static void slsi_create_packet_filter_element(u8                               f
 					      u8                               num_pattern_desc,
 					      struct slsi_mlme_pattern_desc    *pattern_desc,
 					      struct slsi_mlme_pkt_filter_elem *pkt_filter_elem,
-					      int                              *pkt_filters_len)
+					      u8                               *pkt_filters_len)
 {
 	u8 pkt_filter_hdr[SLSI_PKT_FILTER_ELEM_HDR_LEN] = { 0xdd,             /* vendor ie*/
 							    0x00,             /*Length to be filled*/
@@ -3974,8 +3955,7 @@ static void slsi_create_packet_filter_element(u8                               f
 							    filterid,         /*filter id to be filled*/
 							    pkt_filter_mode   /* pkt filter mode to be filled */
 	};
-	u8 i;
-	int pattern_desc_len = 0;
+	u8 i, pattern_desc_len = 0;
 
 	WARN_ON(num_pattern_desc > SLSI_MAX_PATTERN_DESC);
 
@@ -4001,8 +3981,7 @@ static int slsi_set_common_packet_filters(struct slsi_dev *sdev, struct net_devi
 {
 	struct slsi_mlme_pattern_desc pattern_desc;
 	struct slsi_mlme_pkt_filter_elem pkt_filter_elem[1];
-	int pkt_filters_len = 0;
-	u8 num_filters = 0;
+	u8 pkt_filters_len = 0, num_filters = 0;
 
 	/*Opt out all broadcast and multicast packets (filter on I/G bit)*/
 	pattern_desc.offset = 0;
@@ -4021,8 +4000,7 @@ int  slsi_set_arp_packet_filter(struct slsi_dev *sdev, struct net_device *dev)
 {
 	struct slsi_mlme_pattern_desc pattern_desc[SLSI_MAX_PATTERN_DESC];
 	int num_pattern_desc = 0;
-	int pkt_filters_len = 0;
-	u8 num_filters = 0;
+	u8 pkt_filters_len = 0, num_filters = 0;
 	struct slsi_mlme_pkt_filter_elem pkt_filter_elem[2];
 	int ret;
 	struct netdev_vif *ndev_vif = netdev_priv(dev);
@@ -4166,7 +4144,7 @@ int slsi_set_enhanced_pkt_filter(struct net_device *dev, char *command, int buf_
 static int slsi_set_opt_out_unicast_packet_filter(struct slsi_dev *sdev, struct net_device *dev)
 {
 	struct slsi_mlme_pattern_desc pattern_desc;
-	int pkt_filters_len = 0;
+	u8 pkt_filters_len = 0;
 	int ret = 0;
 	struct slsi_mlme_pkt_filter_elem pkt_filter_elem;
 
@@ -4189,7 +4167,7 @@ static int slsi_set_opt_out_unicast_packet_filter(struct slsi_dev *sdev, struct 
 static int  slsi_set_opt_in_tcp4_packet_filter(struct slsi_dev *sdev, struct net_device *dev)
 {
 	struct slsi_mlme_pattern_desc pattern_desc[2];
-	int pkt_filters_len = 0;
+	u8 pkt_filters_len = 0;
 	int ret = 0;
 	struct slsi_mlme_pkt_filter_elem pkt_filter_elem;
 
@@ -4222,7 +4200,7 @@ static int  slsi_set_opt_in_tcp4_packet_filter(struct slsi_dev *sdev, struct net
 static int  slsi_set_opt_in_tcp6_packet_filter(struct slsi_dev *sdev, struct net_device *dev)
 {
 	struct slsi_mlme_pattern_desc pattern_desc[2];
-	int pkt_filters_len = 0;
+	u8 pkt_filters_len = 0;
 	int ret = 0;
 	struct slsi_mlme_pkt_filter_elem pkt_filter_elem;
 
@@ -4255,8 +4233,7 @@ static int  slsi_set_opt_in_tcp6_packet_filter(struct slsi_dev *sdev, struct net
 int  slsi_set_multicast_packet_filters(struct slsi_dev *sdev, struct net_device *dev)
 {
 	struct slsi_mlme_pattern_desc pattern_desc[3];
-	int pkt_filters_len = 0;
-	u8 i, num_filters = 0;
+	u8 pkt_filters_len = 0, i, num_filters = 0;
 	u8 num_pattern_desc = 0;
 	int ret = 0;
 	struct slsi_mlme_pkt_filter_elem *pkt_filter_elem = NULL;
@@ -4371,8 +4348,7 @@ int  slsi_clear_packet_filters(struct slsi_dev *sdev, struct net_device *dev)
 	struct netdev_vif *ndev_vif = netdev_priv(dev);
 	struct slsi_peer *peer = slsi_get_peer_from_qs(sdev, dev, SLSI_STA_PEER_QUEUESET);
 
-	u8 i;
-	int pkt_filters_len = 0;
+	u8 i, pkt_filters_len = 0;
 	int num_filters = 0;
 	int ret = 0;
 	struct slsi_mlme_pkt_filter_elem *pkt_filter_elem;
@@ -4506,7 +4482,7 @@ void slsi_set_packet_filters(struct slsi_dev *sdev, struct net_device *dev)
 {
 	struct slsi_mlme_pattern_desc pattern_desc[SLSI_MAX_PATTERN_DESC];
 	int num_pattern_desc = 0;
-	int pkt_filters_len = 0;
+	u8 pkt_filters_len = 0;
 	int num_filters = 0;
 
 	struct slsi_mlme_pkt_filter_elem pkt_filter_elem[SLSI_ON_CONNECT_FILTERS_COUNT];
@@ -4521,7 +4497,6 @@ void slsi_set_packet_filters(struct slsi_dev *sdev, struct net_device *dev)
 		return;
 
 	if (WARN_ON(!peer) || WARN_ON(!peer->assoc_resp_ie))
-		return;
 
 #if !(IS_ENABLED(CONFIG_IPV6))
 	/*Opt out all IPv6 packets in active and suspended mode (ipv6 filtering)*/
@@ -4639,7 +4614,7 @@ int slsi_ip_address_changed(struct slsi_dev *sdev, struct net_device *dev, __be3
 		struct slsi_mlme_pattern_desc pattern_desc[1];
 		u8 num_patterns = 0;
 		struct slsi_mlme_pkt_filter_elem pkt_filter_elem[1];
-		int pkt_filters_len = 0;
+		u8 pkt_filters_len = 0;
 		u8 num_filters = 0;
 #endif
 
@@ -7797,7 +7772,6 @@ void slsi_collect_chipset_logs(struct work_struct *work)
 	void                    *buffer = NULL;
 	size_t size;
 	size_t bytes = 0;
-	int ret = 0;
 	char build_id_fw[128];
 	char build_id_drv[64];
 	size_t total_header;

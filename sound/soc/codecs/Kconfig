@@ -1388,6 +1388,29 @@ config SND_SOC_TPA6130A2
 	tristate "Texas Instruments TPA6130A2 headphone amplifier"
 	depends on I2C
 
+config TAS2562_REGMAP
+	bool "Use of RegMap API"
+	help
+	 Enable support for TAS2562 regmap driver.
+	 This includes i2c i2c driver structure,
+	 IRQ processing, registers read and write
+	 by i2c operations.
+
+config TAS2562_CODEC
+	bool "Codec Driver support"
+	help
+	 Enable support for TAS2562 codec driver.
+	 This includes codec driver interfaces
+	 and functions.
+
+config TAS25XX_ALGO
+	bool "Algo Driver support"
+	help
+	 Enable support for TAS25XX algorithm driver.
+	 This includes APIs to communicate with ABOX,
+	 Factory calibration/validation related codes,
+	 Misc driver for tuning tool support.
+
 config SND_SOC_TAS2562
 	tristate "Texas Instruments TAS2562 SmartAmp(R)"
 	depends on I2C
@@ -1403,11 +1426,5 @@ config SND_SOC_SMA1303
 	  amplifier which contain speaker protection,
 	  multi-band DRC, equalizer function. It would
 	  be set to yes if device with SMA1303 on it.
-
-config SND_SMARTPA_AW8896
-	tristate "SoC Audio for awinic aw8896 series"
-	depends on I2C
-	help
-	  This option enables support for aw8896 series Smart PA.
 
 endmenu

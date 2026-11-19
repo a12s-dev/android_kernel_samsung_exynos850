@@ -80,6 +80,7 @@ fib_multipath_hash_policy - INTEGER
 	Possible values:
 	0 - Layer 3
 	1 - Layer 4
+	2 - Layer 3 or inner Layer 3 if present
 
 ip_forward_update_priority - INTEGER
 	Whether to update SKB priority from "TOS" field in IPv4 header after it
@@ -139,6 +140,26 @@ mtu_expires - INTEGER
 min_adv_mss - INTEGER
 	The advertised MSS depends on the first hop route MTU, but will
 	never be lower than this setting.
+
+fib_notify_on_flag_change - INTEGER
+        Whether to emit RTM_NEWROUTE notifications whenever RTM_F_OFFLOAD/
+        RTM_F_TRAP flags are changed.
+
+        After installing a route to the kernel, user space receives an
+        acknowledgment, which means the route was installed in the kernel,
+        but not necessarily in hardware.
+        It is also possible for a route already installed in hardware to change
+        its action and therefore its flags. For example, a host route that is
+        trapping packets can be "promoted" to perform decapsulation following
+        the installation of an IPinIP/VXLAN tunnel.
+        The notifications will indicate to user-space the state of the route.
+
+        Default: 0 (Do not emit notifications.)
+
+        Possible values:
+
+        - 0 - Do not emit notifications.
+        - 1 - Emit notifications.
 
 IP Fragmentation:
 
@@ -529,16 +550,15 @@ tcp_rmem - vector of 3 INTEGERs: min, default, max
 
 	default: initial size of receive buffer used by TCP sockets.
 	This value overrides net.core.rmem_default used by other protocols.
-	Default: 87380 bytes. This value results in window of 65535 with
-	default setting of tcp_adv_win_scale and tcp_app_win:0 and a bit
-	less for default tcp_app_win. See below about these variables.
+	Default: 131072 bytes.
+	This value results in initial window of 65535.
 
 	max: maximal size of receive buffer allowed for automatically
 	selected receiver buffers for TCP socket. This value does not override
 	net.core.rmem_max.  Calling setsockopt() with SO_RCVBUF disables
 	automatic tuning of that socket's receive buffer size, in which
 	case this value is ignored.
-	Default: between 87380B and 6MB, depending on RAM size.
+	Default: between 131072 and 6MB, depending on RAM size.
 
 tcp_sack - BOOLEAN
 	Enable select acknowledgments (SACKS).
@@ -810,7 +830,7 @@ cipso_cache_enable - BOOLEAN
 cipso_cache_bucket_size - INTEGER
 	The CIPSO label cache consists of a fixed size hash table with each
 	hash bucket containing a number of cache entries.  This variable limits
-	the number of entries in each hash bucket; the larger the value the
+	the number of entries in each hash bucket; the larger the value is, the
 	more CIPSO label mappings that can be cached.  When the number of
 	entries in a given hash bucket reaches this limit adding new entries
 	causes the oldest entry in the bucket to be removed to make room.
@@ -887,7 +907,7 @@ ip_nonlocal_bind - BOOLEAN
 	which can be quite useful - but may break some applications.
 	Default: 0
 
-ip_dynaddr - BOOLEAN
+ip_dynaddr - INTEGER
 	If set non-zero, enables support for dynamic addresses.
 	If set to a non-zero value larger than 1, a kernel log
 	message will be printed when dynamic address rewriting
@@ -1405,6 +1425,7 @@ fib_multipath_hash_policy - INTEGER
 	Possible values:
 	0 - Layer 3 (source and destination addresses plus flow label)
 	1 - Layer 4 (standard 5-tuple)
+	2 - Layer 3 or inner Layer 3 if present
 
 anycast_src_echo_reply - BOOLEAN
 	Controls the use of anycast addresses as source addresses for ICMPv6
@@ -1452,6 +1473,47 @@ max_hbh_length - INTEGER
 	Maximum length allowed for a Hop-by-Hop options extension
 	header.
 	Default: INT_MAX (unlimited)
+
+skip_notify_on_dev_down - BOOLEAN
+	Controls whether an RTM_DELROUTE message is generated for routes
+	removed when a device is taken down or deleted. IPv4 does not
+	generate this message; IPv6 does by default. Setting this sysctl
+	to true skips the message, making IPv4 and IPv6 on par in relying
+	on userspace caches to track link events and evict routes.
+	Default: false (generate message)
+
+nexthop_compat_mode - BOOLEAN
+	New nexthop API provides a means for managing nexthops independent of
+	prefixes. Backwards compatibilty with old route format is enabled by
+	default which means route dumps and notifications contain the new
+	nexthop attribute but also the full, expanded nexthop definition.
+	Further, updates or deletes of a nexthop configuration generate route
+	notifications for each fib entry using the nexthop. Once a system
+	understands the new API, this sysctl can be disabled to achieve full
+	performance benefits of the new API by disabling the nexthop expansion
+	and extraneous notifications.
+	Default: true (backward compat mode)
+
+fib_notify_on_flag_change - INTEGER
+        Whether to emit RTM_NEWROUTE notifications whenever RTM_F_OFFLOAD/
+        RTM_F_TRAP/RTM_F_OFFLOAD_FAILED flags are changed.
+
+        After installing a route to the kernel, user space receives an
+        acknowledgment, which means the route was installed in the kernel,
+        but not necessarily in hardware.
+        It is also possible for a route already installed in hardware to change
+        its action and therefore its flags. For example, a host route that is
+        trapping packets can be "promoted" to perform decapsulation following
+        the installation of an IPinIP/VXLAN tunnel.
+        The notifications will indicate to user-space the state of the route.
+
+        Default: 0 (Do not emit notifications.)
+
+        Possible values:
+
+        - 0 - Do not emit notifications.
+        - 1 - Emit notifications.
+        - 2 - Emit notifications only for RTM_F_OFFLOAD_FAILED flag change.
 
 IPv6 Fragmentation:
 
@@ -1538,6 +1600,16 @@ accept_ra_defrtr - BOOLEAN
 
 	Functional default: enabled if accept_ra is enabled.
 			    disabled if accept_ra is disabled.
+
+ra_defrtr_metric - UNSIGNED INTEGER
+	Route metric for default route learned in Router Advertisement. This value
+	will be assigned as metric for the default route learned via IPv6 Router
+	Advertisement. Takes affect only if accept_ra_defrtr is enabled.
+
+	Possible values:
+		1 to 0xFFFFFFFF
+
+		Default: IP6_RT_PRIO_USER i.e. 1024.
 
 accept_ra_from_local - BOOLEAN
 	Accept RA with source-address that is found on local machine
@@ -2170,7 +2242,14 @@ sctp_rmem - vector of 3 INTEGERs: min, default, max
 	Default: 4K
 
 sctp_wmem  - vector of 3 INTEGERs: min, default, max
-	Currently this tunable has no effect.
+	Only the first value ("min") is used, "default" and "max" are
+	ignored.
+
+	min: Minimum size of send buffer that can be used by SCTP sockets.
+	It is guaranteed to each SCTP socket (but not association) even
+	under moderate memory pressure.
+
+	Default: 4K
 
 addr_scope_policy - INTEGER
 	Control IPv4 address scoping - draft-stewart-tsvwg-sctp-ipv4-00

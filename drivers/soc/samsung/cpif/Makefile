@@ -19,6 +19,7 @@ obj-$(CONFIG_LINK_DEVICE_SHMEM) += link_device.o \
 				   modem_notifier.o
 
 obj-$(CONFIG_LINK_DEVICE_PCIE) += link_device.o \
+				   s51xx_pcie.o \
 				   link_device_memory_snapshot.o \
 				   link_device_memory_flow_control.o \
 				   link_device_memory_debug.o \
@@ -29,6 +30,7 @@ obj-$(CONFIG_LINK_DEVICE_PCIE) += link_device.o \
 obj-$(CONFIG_SEC_MODEM_S5000AP) += modem_ctrl_s5000ap.o modem_ctrl.o
 obj-$(CONFIG_SEC_MODEM_S5100) += modem_ctrl_s5100.o modem_ctrl.o
 
+obj-$(CONFIG_CP_ZEROCOPY) += link_rx_zerocopy.o
 obj-$(CONFIG_CP_PKTPROC) += link_rx_pktproc.o
 obj-$(CONFIG_CP_PKTPROC_V2) += link_rx_pktproc.o
 
@@ -38,7 +40,9 @@ obj-$(CONFIG_CP_BTL) += cp_btl.o
 
 obj-$(CONFIG_CPIF_TP_MONITOR) += cpif_tp_monitor.o
 
+obj-$(CONFIG_MODEM_IF_LEGACY_QOS) += cpif_qos_info.o
 
+obj-$(CONFIG_USB_CONFIGFS_F_MBIM) += mbim_io_device.o
 
 ifeq ($(CONFIG_RPS), y)
 ifeq ($(CONFIG_ARGOS), y)

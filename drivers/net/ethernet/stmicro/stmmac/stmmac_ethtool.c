@@ -42,7 +42,7 @@ struct stmmac_stats {
 };
 
 #define STMMAC_STAT(m)	\
-	{ #m, FIELD_SIZEOF(struct stmmac_extra_stats, m),	\
+	{ #m, sizeof_field(struct stmmac_extra_stats, m),	\
 	offsetof(struct stmmac_priv, xstats.m)}
 
 static const struct stmmac_stats stmmac_gstrings_stats[] = {
@@ -170,7 +170,7 @@ static const struct stmmac_stats stmmac_gstrings_stats[] = {
 
 /* HW MAC Management counters (if supported) */
 #define STMMAC_MMC_STAT(m)	\
-	{ #m, FIELD_SIZEOF(struct stmmac_counters, m),	\
+	{ #m, sizeof_field(struct stmmac_counters, m),	\
 	offsetof(struct stmmac_priv, mmc.m)}
 
 static const struct stmmac_stats stmmac_mmc[] = {
@@ -694,23 +694,16 @@ static int stmmac_ethtool_op_set_eee(struct net_device *dev,
 	struct stmmac_priv *priv = netdev_priv(dev);
 	int ret;
 
-	if (!edata->eee_enabled) {
+	if (!priv->dma_cap.eee)
+		return -EOPNOTSUPP;
+
+	if (!edata->eee_enabled)
 		stmmac_disable_eee_mode(priv);
-	} else {
-		/* We are asking for enabling the EEE but it is safe
-		 * to verify all by invoking the eee_init function.
-		 * In case of failure it will return an error.
-		 */
-		edata->eee_enabled = stmmac_eee_init(priv);
-		if (!edata->eee_enabled)
-			return -EOPNOTSUPP;
-	}
 
 	ret = phy_ethtool_set_eee(dev->phydev, edata);
 	if (ret)
 		return ret;
 
-	priv->eee_enabled = edata->eee_enabled;
 	priv->tx_lpi_timer = edata->tx_lpi_timer;
 	return 0;
 }

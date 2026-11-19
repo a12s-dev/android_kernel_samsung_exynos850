@@ -223,6 +223,20 @@ config MALI_GEM5_BUILD
 comment "Debug options"
 	depends on MALI_MIDGARD && MALI_EXPERT
 
+config MALI_FW_CORE_DUMP
+        bool "Enable support for FW core dump"
+        depends on MALI_MIDGARD && MALI_EXPERT && MALI_CSF_SUPPORT
+        default n
+        help
+          Adds ability to request firmware core dump
+
+          Example:
+          * To explicitly request core dump:
+                echo 1 >/sys/kernel/debug/mali0/fw_core_dump
+          * To output current core dump (after explicitly requesting a core dump,
+            or kernel driver reported an internal firmware error):
+                cat /sys/kernel/debug/mali0/fw_core_dump
+
 config MALI_DEBUG
 	bool "Enable debug build"
 	depends on MALI_MIDGARD && MALI_EXPERT
@@ -373,7 +387,7 @@ config MALI_HW_ERRATA_1485982_USE_CLOCK_ALTERNATIVE
 endif
 
 config MALI_ARBITRATION
-	tristate "Enable Virtualization reference code"
+	bool "Enable Virtualization reference code"
 	depends on MALI_MIDGARD
 	default n
 	help
@@ -381,6 +395,9 @@ config MALI_ARBITRATION
 	  virtualization setup for Mali
 	  If unsure, say N.
 
+if MALI_ARBITRATION
+# source "drivers/gpu/arm/midgard/arbitration/Kconfig"
+endif
 
 # source "drivers/gpu/arm/midgard/tests/Kconfig"
 

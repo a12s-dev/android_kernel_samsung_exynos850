@@ -34,7 +34,6 @@
 #include <linux/cpuidle.h>
 #include <linux/timer.h>
 #include <linux/wakeup_reason.h>
-#include <linux/sec_debug.h>
 
 #include "../base.h"
 #include "power.h"
@@ -518,9 +517,6 @@ static void dpm_watchdog_handler(struct timer_list *t)
 	struct dpm_watchdog *wd = from_timer(wd, t, timer);
 
 	dev_emerg(wd->dev, "**** DPM device timeout ****\n");
-#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
-	secdbg_exin_set_dpm_timeout(dev_name(wd->dev));
-#endif
 	show_stack(wd->tsk, NULL);
 	panic("%s %s: unrecoverable failure\n",
 		dev_driver_string(wd->dev), dev_name(wd->dev));
@@ -1419,6 +1415,10 @@ static void async_suspend_noirq(void *data, async_cookie_t cookie)
 	if (error) {
 		dpm_save_failed_dev(dev_name(dev));
 		pm_dev_err(dev, pm_transition, " async", error);
+#ifdef CONFIG_SEC_PM_DEBUG
+		log_suspend_abort_reason("Device %s failed to suspend async: %d",
+				dev_name(dev), error);
+#endif /* CONFIG_SEC_PM_DEBUG */
 	}
 
 	put_device(dev);
@@ -1907,10 +1907,6 @@ static void async_suspend(void *data, async_cookie_t cookie)
 	if (error) {
 		dpm_save_failed_dev(dev_name(dev));
 		pm_dev_err(dev, pm_transition, " async", error);
-#ifdef CONFIG_SEC_PM_DEBUG
-		log_suspend_abort_reason("Device %s failed to suspend async: %d",
-				dev_name(dev), error);
-#endif
 	}
 
 	put_device(dev);
@@ -1962,7 +1958,7 @@ int dpm_suspend(pm_message_t state)
 #ifdef CONFIG_SEC_PM_DEBUG
 			log_suspend_abort_reason("Device %s failed to suspend: %d",
 					dev_name(dev), error);
-#endif
+#endif /* CONFIG_SEC_PM_DEBUG */
 			put_device(dev);
 			break;
 		}
@@ -2115,10 +2111,6 @@ int dpm_prepare(pm_message_t state)
 			log_suspend_abort_reason("Device %s not prepared for power transition: code %d",
 						 dev_name(dev), error);
 			dpm_save_failed_dev(dev_name(dev));
-#ifdef CONFIG_SEC_PM_DEBUG
-			log_suspend_abort_reason("Device %s not prepared: %d",
-					dev_name(dev), error);
-#endif
 			put_device(dev);
 			break;
 		}
@@ -2213,7 +2205,9 @@ static bool pm_ops_is_empty(const struct dev_pm_ops *ops)
 
 void device_pm_check_callbacks(struct device *dev)
 {
-	spin_lock_irq(&dev->power.lock);
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->power.lock, flags);
 	dev->power.no_pm_callbacks =
 		(!dev->bus || (pm_ops_is_empty(dev->bus->pm) &&
 		 !dev->bus->suspend && !dev->bus->resume)) &&
@@ -2222,7 +2216,7 @@ void device_pm_check_callbacks(struct device *dev)
 		(!dev->pm_domain || pm_ops_is_empty(&dev->pm_domain->ops)) &&
 		(!dev->driver || (pm_ops_is_empty(dev->driver->pm) &&
 		 !dev->driver->suspend && !dev->driver->resume));
-	spin_unlock_irq(&dev->power.lock);
+	spin_unlock_irqrestore(&dev->power.lock, flags);
 }
 
 bool dev_pm_smart_suspend_and_suspended(struct device *dev)

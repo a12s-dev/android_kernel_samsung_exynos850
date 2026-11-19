@@ -179,7 +179,7 @@ static int submit_fence_sync(struct etnaviv_gem_submit *submit)
 		struct reservation_object *robj = bo->obj->resv;
 
 		if (!(bo->flags & ETNA_SUBMIT_BO_WRITE)) {
-			ret = reservation_object_reserve_shared(robj);
+			ret = reservation_object_reserve_shared(robj, 1);
 			if (ret)
 				return ret;
 		}
@@ -441,6 +441,12 @@ int etnaviv_ioctl_gem_submit(struct drm_device *dev, void *data,
 
 	if (args->flags & ~ETNA_SUBMIT_FLAGS) {
 		DRM_ERROR("invalid flags: 0x%x\n", args->flags);
+		return -EINVAL;
+	}
+
+	if (args->stream_size > SZ_128K || args->nr_relocs > SZ_128K ||
+	    args->nr_bos > SZ_128K || args->nr_pmrs > 128) {
+		DRM_ERROR("submit arguments out of size limits\n");
 		return -EINVAL;
 	}
 

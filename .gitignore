@@ -114,7 +114,6 @@ GTAGS
 # id-utils files
 ID
 
-*.orig
 *~
 \#*#
 
@@ -132,3 +131,6 @@ all.config
 
 # Kdevelop4
 *.kdev4
+
+# Build directory
+/out

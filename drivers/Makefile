@@ -194,35 +194,35 @@ obj-$(CONFIG_EXYNOS_BTS)        += bts/
 obj-$(CONFIG_SPU_VERIFY) += spu_verify/
 
 # Mobicore driver
+obj-$(CONFIG_TRUSTONIC_TEE)     += gud/
 
 # vision driver
-
+obj-$(CONFIG_VISION_SUPPORT)	+= vision/
+obj-$(CONFIG_SENSORS_SSP)   += sensorhub/
 obj-$(CONFIG_SEC_EXT)		+= samsung/
 
 # uH
+obj-$(CONFIG_UH)		+= uh/
 
-# sensor driver
-obj-y				+= sensors/
-
-# OLOG
-obj-y				+= kperfmon/
-obj-y += regulator/pmic_class/
-obj-y += misc/drb/
-obj-y += vibrator/common/
-obj-y += nfc/nfc_logger/
-obj-y += sti/abc/
-obj-y += muic/common/
-obj-y += samsung/debug/
-obj-y += input/input_boost/
-obj-y += fingerprint/
-obj-y += usb/typec/manager/
-obj-y += usb/typec/common/
-obj-y += mfd/sm/sm5714/
-obj-y += hwmon/sec_thermistor/
-obj-y += vibrator/dc/
-obj-y += muic/sm/sm5714/
-obj-y += sensorhub/
-obj-y += battery/fuelgauge/sm5714_fuelgauge/
-obj-y += usb/typec/sm/sm5714/
-obj-y += battery/charger/sm5714_charger/
-obj-y += battery/common/
+obj-y += regulator/pmic_class/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += usb/typec/slsi/common/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += misc/drb/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += vibrator/common/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += kq/nad/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += fingerprint/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += usb/typec/slsi/s2mu106/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += usb/typec/manager/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += usb/typec/common/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += sti/abc/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += muic/common/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += regulator/s2mpb03/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += mfd/slsi/s2mu106/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += sensorhub/proximity/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += sensorhub/magnetic/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += sensorhub/gyroscope/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += sensorhub/accelerometer/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += vibrator/slsi/s2mu106/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += muic/slsi/s2mu106/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += battery/fuelgauge/s2mu106_fuelgauge/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += battery/charger/s2mu106_charger/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
+obj-y += battery/common/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT

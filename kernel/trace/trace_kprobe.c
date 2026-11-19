@@ -112,9 +112,9 @@ bool trace_kprobe_on_func_entry(struct trace_event_call *call)
 {
 	struct trace_kprobe *tk = (struct trace_kprobe *)call->data;
 
-	return kprobe_on_func_entry(tk->rp.kp.addr,
+	return (kprobe_on_func_entry(tk->rp.kp.addr,
 			tk->rp.kp.addr ? NULL : tk->rp.kp.symbol_name,
-			tk->rp.kp.addr ? 0 : tk->rp.kp.offset);
+			tk->rp.kp.addr ? 0 : tk->rp.kp.offset) == 0);
 }
 
 bool trace_kprobe_error_injectable(struct trace_event_call *call)
@@ -201,7 +201,7 @@ static void FETCH_FUNC_NAME(memory, type)(struct pt_regs *regs,		\
 					  void *addr, void *dest)	\
 {									\
 	type retval;							\
-	if (probe_kernel_address(addr, retval))				\
+	if (get_kernel_nofault(retval, addr))				\
 		*(type *)dest = 0;					\
 	else								\
 		*(type *)dest = retval;					\
@@ -216,6 +216,7 @@ DEFINE_BASIC_FETCH_FUNCS(memory)
 static void FETCH_FUNC_NAME(memory, string)(struct pt_regs *regs,
 					    void *addr, void *dest)
 {
+	const void __user *uaddr =  (__force const void __user *)addr;
 	int maxlen = get_rloc_len(*(u32 *)dest);
 	u8 *dst = get_rloc_data(dest);
 	long ret;
@@ -223,11 +224,7 @@ static void FETCH_FUNC_NAME(memory, string)(struct pt_regs *regs,
 	if (!maxlen)
 		return;
 
-	/*
-	 * Try to get string again, since the string can be changed while
-	 * probing.
-	 */
-	ret = strncpy_from_unsafe(dst, addr, maxlen);
+	ret = strncpy_from_user_nofault(dest, uaddr, maxlen);
 
 	if (ret < 0) {	/* Failed to fetch string */
 		dst[0] = '\0';
@@ -517,7 +514,7 @@ disable_trace_kprobe(struct trace_kprobe *tk, struct trace_event_file *file)
 	return ret;
 }
 
-#if defined(CONFIG_KPROBES_ON_FTRACE) && \
+#if defined(CONFIG_DYNAMIC_FTRACE) && \
 	!defined(CONFIG_KPROBE_EVENTS_ON_NOTRACE)
 static bool __within_notrace_func(unsigned long addr)
 {
@@ -836,8 +833,9 @@ static int create_trace_kprobe(int argc, char **argv)
 			pr_info("Failed to parse either an address or a symbol.\n");
 			return ret;
 		}
+		/* Defer the ENOENT case until register kprobe */
 		if (offset && is_return &&
-		    !kprobe_on_func_entry(NULL, symbol, offset)) {
+		    kprobe_on_func_entry(NULL, symbol, offset) == -EINVAL) {
 			pr_info("Given offset is not valid for return probe.\n");
 			return -EINVAL;
 		}

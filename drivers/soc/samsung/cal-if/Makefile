@@ -12,6 +12,7 @@ obj-$(CONFIG_CP_PMUCAL)			+= pmucal_cp.o
 obj-$(CONFIG_GNSS_PMUCAL)		+= pmucal_gnss.o
 obj-$(CONFIG_SHUB_PMUCAL)              += pmucal_shub.o
 obj-$(CONFIG_CMUCAL)			+= cmucal.o ra.o vclk.o pll_spec.o
+obj-$(CONFIG_CMUCAL_DEBUG)		+= cmucal-debug.o
 obj-$(CONFIG_ACPM_DVFS)			+= acpm_dvfs.o fvmap.o
 #obj-$(CONFIG_CMU_EWF)			+= cmu_ewf.o
 

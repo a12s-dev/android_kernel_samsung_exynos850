@@ -272,6 +272,7 @@ Code  Seq#(hex)	Include File		Comments
 't'	90-91	linux/toshiba.h		toshiba and toshiba_acpi SMM
 'u'	00-1F	linux/smb_fs.h		gone
 'u'	20-3F	linux/uvcvideo.h	USB video class host driver
+'u'	40-4f	linux/udmabuf.h		userspace dma-buf misc device
 'v'	00-1F	linux/ext2_fs.h		conflict!
 'v'	00-1F	linux/fs.h		conflict!
 'v'	00-0F	linux/sonypi.h		conflict!
@@ -290,7 +291,6 @@ Code  Seq#(hex)	Include File		Comments
 0x89	00-06	arch/x86/include/asm/sockios.h
 0x89	0B-DF	linux/sockios.h
 0x89	E0-EF	linux/sockios.h		SIOCPROTOPRIVATE range
-0x89	E0-EF	linux/dn.h		PROTOPRIVATE range
 0x89	F0-FF	linux/sockios.h		SIOCDEVPRIVATE range
 0x8B	all	linux/wireless.h
 0x8C	00-3F				WiNRADiO driver

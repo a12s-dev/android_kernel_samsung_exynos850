@@ -191,6 +191,11 @@ config EXYNOS_MCINFO
 	bool "Exynos memory controller information"
 	default n
 
+config MCINFO_SYSFS
+	bool "Exynos memory controller information sysfs"
+	depends on EXYNOS_MCINFO
+	default	y if SYSFS
+
 config EXYNOS_SECURE_LOG
 	bool "Exynos Secure Log"
 	default y
@@ -220,6 +225,29 @@ config EXYNOS_SDM
 	default y
 	help
 	  Exynos Security Dump Manager
+
+config EXYNOS_PPMPU_SEPARATE_INTERRUPT
+	bool "PPMPU separate interrupt(R/W)"
+	depends on EXYNOS_PPMPU_FAIL_DETECTOR
+	help
+	  PPMPU interrupt source is separate from
+	  read and write
+
+config EXYNOS_PPMPU_ILLEGAL_READ_LOGGING
+	bool "Logging PPMPU Read Fail Information"
+	depends on EXYNOS_PPMPU_FAIL_DETECTOR
+	default n
+	help
+	  PPMPU fail information of illegal reads will be printed
+	  by the Kernel logging system.
+
+config EXYNOS_PPMPU_ILLEGAL_ACCESS_PANIC
+	bool "Kernel Panic over PPMPU Illegal Access"
+	depends on EXYNOS_PPMPU_FAIL_DETECTOR
+	default y
+	help
+	  Kernel panic will occur in case that PPMPU illegal
+	  access is detected.
 
 config EXYNOS_TZASC_FAIL_DETECTOR
 	bool "Exynos TZASC Fail Detector"
@@ -261,5 +289,5 @@ endif
 
 source "drivers/soc/samsung/exynos-hdcp/Kconfig"
 source "drivers/soc/samsung/cpif/Kconfig"
+source "drivers/soc/samsung/dit/Kconfig"
 source "drivers/soc/samsung/gnssif/Kconfig"
-source "drivers/soc/samsung/m12-model/Kconfig"

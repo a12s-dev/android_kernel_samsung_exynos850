@@ -66,7 +66,7 @@
 
 #ifdef CONFIG_STACKPROTECTOR
 #include <linux/stackprotector.h>
-unsigned long __stack_chk_guard __read_mostly;
+unsigned long __stack_chk_guard __ro_after_init;
 EXPORT_SYMBOL(__stack_chk_guard);
 #endif
 
@@ -262,7 +262,6 @@ static void show_data(unsigned long addr, int nbytes, const char *name)
 	nbytes += (addr & (sizeof(u32) - 1));
 	nlines = (nbytes + 31) / 32;
 
-
 	for (i = 0; i < nlines; i++) {
 		/*
 		 * just display low 16 bits of address to keep
@@ -277,9 +276,9 @@ static void show_data(unsigned long addr, int nbytes, const char *name)
 					pr_cont(" ********\n");
 				else
 					pr_cont(" ********");
-			} else if (probe_kernel_address(p, data)) {
+			} else if (get_kernel_nofault(data, p)) {
 #else
-			if (probe_kernel_address(p, data)) {
+			if (get_kernel_nofault(data, p)) {
 #endif
 				if (j == 7)
 					pr_cont(" ********\n");
@@ -455,8 +454,8 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 
 asmlinkage void ret_from_fork(void) asm("ret_from_fork");
 
-int copy_thread(unsigned long clone_flags, unsigned long stack_start,
-		unsigned long stk_sz, struct task_struct *p)
+int copy_thread_tls(unsigned long clone_flags, unsigned long stack_start,
+		unsigned long stk_sz, struct task_struct *p, unsigned long tls)
 {
 	struct pt_regs *childregs = task_pt_regs(p);
 
@@ -489,11 +488,11 @@ int copy_thread(unsigned long clone_flags, unsigned long stack_start,
 		}
 
 		/*
-		 * If a TLS pointer was passed to clone (4th argument), use it
-		 * for the new thread.
+		 * If a TLS pointer was passed to clone, use it for the new
+		 * thread.
 		 */
 		if (clone_flags & CLONE_SETTLS)
-			p->thread.uw.tp_value = childregs->regs[3];
+			p->thread.uw.tp_value = tls;
 	} else {
 		memset(childregs, 0, sizeof(struct pt_regs));
 		childregs->pstate = PSR_MODE_EL1h;
@@ -526,7 +525,7 @@ static void tls_thread_switch(struct task_struct *next)
 
 	if (is_compat_thread(task_thread_info(next)))
 		write_sysreg(next->thread.uw.tp_value, tpidrro_el0);
-	else if (!arm64_kernel_unmapped_at_el0())
+	else
 		write_sysreg(0, tpidrro_el0);
 
 	write_sysreg(*task_user_tls(next), tpidr_el0);

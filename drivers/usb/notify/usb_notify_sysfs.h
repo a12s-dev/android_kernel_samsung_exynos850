@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015-2020 Samsung Electronics Co. Ltd.
+ * Copyright (C) 2015-2017 Samsung Electronics Co. Ltd.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -8,7 +8,7 @@
  * (at your option) any later version.
  */
 
-  /* usb notify layer v3.5 */
+  /* usb notify layer v3.4 */
 
 #ifndef __LINUX_USB_NOTIFY_SYSFS_H__
 #define __LINUX_USB_NOTIFY_SYSFS_H__
@@ -52,11 +52,9 @@ struct usb_notify_dev {
 	int index;
 	unsigned long usb_data_enabled;
 	unsigned long disable_state;
-	unsigned long secure_lock;
 	char disable_state_cmd[MAX_DISABLE_STR_LEN];
 	int (*set_disable)(struct usb_notify_dev *udev, int param);
 	void (*set_mdm)(struct usb_notify_dev *udev, int mdm_disable);
-	int (*set_lock_state)(struct usb_notify_dev *udev);
 	char whitelist_str[MAX_WHITELIST_STR_LEN];
 	int whitelist_array_for_mdm[MAX_CLASS_TYPE_NUM+1];
 	struct usb_audio_info usb_audio_cards[MAX_USB_AUDIO_CARDS];

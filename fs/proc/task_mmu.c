@@ -185,7 +185,7 @@ static void vma_stop(struct proc_maps_private *priv)
 	struct mm_struct *mm = priv->mm;
 
 	release_task_mempolicy(priv);
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 	mmput(mm);
 }
 
@@ -223,7 +223,7 @@ static void *m_start(struct seq_file *m, loff_t *ppos)
 	if (!mm || !mmget_not_zero(mm))
 		return NULL;
 
-	if (down_read_killable(&mm->mmap_sem)) {
+	if (mmap_read_lock_killable(mm)) {
 		mmput(mm);
 		return ERR_PTR(-EINTR);
 	}
@@ -484,6 +484,10 @@ struct mem_size_stats {
 	unsigned long swap;
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
 	unsigned long writeback;
+	unsigned long writeback_huge;
+	unsigned long same;
+	unsigned long huge;
+	unsigned long swap_shared;
 #endif
 	unsigned long shared_hugetlb;
 	unsigned long private_hugetlb;
@@ -578,12 +582,11 @@ static void smaps_pte_entry(pte_t *pte, unsigned long addr,
 
 		if (!non_swap_entry(swpent)) {
 			int mapcount;
+#ifdef CONFIG_ZRAM_LRU_WRITEBACK
+			int type;
+#endif
 
 			mss->swap += PAGE_SIZE;
-#ifdef CONFIG_ZRAM_LRU_WRITEBACK
-			if (is_writeback_entry(swpent))
-				mss->writeback += PAGE_SIZE;
-#endif
 			mapcount = swp_swapcount(swpent);
 			if (mapcount >= 2) {
 				u64 pss_delta = (u64)PAGE_SIZE << PSS_SHIFT;
@@ -593,6 +596,21 @@ static void smaps_pte_entry(pte_t *pte, unsigned long addr,
 			} else {
 				mss->swap_pss += (u64)PAGE_SIZE << PSS_SHIFT;
 			}
+#ifdef CONFIG_ZRAM_LRU_WRITEBACK
+			type = zram_get_entry_type(swp_offset(swpent));
+			if (type == ZRAM_WB_TYPE || type == ZRAM_WB_HUGE_TYPE)
+				mss->writeback += PAGE_SIZE;
+			if (type == ZRAM_WB_HUGE_TYPE)
+				mss->writeback_huge += PAGE_SIZE;
+			if (mapcount >= 2) {
+				mss->swap_shared += PAGE_SIZE;
+			} else {
+				if (type == ZRAM_SAME_TYPE)
+					mss->same += PAGE_SIZE;
+				if (type == ZRAM_HUGE_TYPE)
+					mss->huge += PAGE_SIZE;
+			}
+#endif
 		} else if (is_migration_entry(swpent))
 			page = migration_entry_to_page(swpent);
 		else if (is_device_private_entry(swpent))
@@ -604,7 +622,7 @@ static void smaps_pte_entry(pte_t *pte, unsigned long addr,
 		if (!page)
 			return;
 
-		if (radix_tree_exceptional_entry(page))
+		if (xa_is_value(page))
 			mss->swap += PAGE_SIZE;
 		else
 			put_page(page);
@@ -736,6 +754,9 @@ static void show_smap_vma_flags(struct seq_file *m, struct vm_area_struct *vma)
 		[ilog2(VM_PKEY_BIT4)]	= "",
 #endif
 #endif /* CONFIG_ARCH_HAS_PKEYS */
+#ifdef CONFIG_HAVE_ARCH_USERFAULTFD_MINOR
+		[ilog2(VM_UFFD_MINOR)]	= "ui",
+#endif /* CONFIG_HAVE_ARCH_USERFAULTFD_MINOR */
 	};
 	size_t i;
 
@@ -772,9 +793,7 @@ static int smaps_hugetlb_range(pte_t *pte, unsigned long hmask,
 			page = device_private_entry_to_page(swpent);
 	}
 	if (page) {
-		int mapcount = page_mapcount(page);
-
-		if (mapcount >= 2)
+		if (page_mapcount(page) >= 2 || hugetlb_pmd_shared(pte))
 			mss->shared_hugetlb += huge_page_size(hstate_vma(vma));
 		else
 			mss->private_hugetlb += huge_page_size(hstate_vma(vma));
@@ -850,6 +869,10 @@ static void __show_smap(struct seq_file *m, const struct mem_size_stats *mss)
 					mss->swap_pss >> PSS_SHIFT);
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
 	SEQ_PUT_DEC(" kB\nWriteback:      ", mss->writeback);
+	SEQ_PUT_DEC(" kB\nWritebackHuge:  ", mss->writeback_huge);
+	SEQ_PUT_DEC(" kB\nSame:           ", mss->same);
+	SEQ_PUT_DEC(" kB\nHuge:           ", mss->huge);
+	SEQ_PUT_DEC(" kB\nSwapShared:     ", mss->swap_shared);
 #endif
 	SEQ_PUT_DEC(" kB\nLocked:         ",
 					mss->pss_locked >> PSS_SHIFT);
@@ -911,7 +934,7 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
 
 	memset(&mss, 0, sizeof(mss));
 
-	ret = down_read_killable(&mm->mmap_sem);
+	ret = mmap_read_lock_killable(mm);
 	if (ret)
 		goto out_put_mm;
 
@@ -922,7 +945,7 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
 		last_vma_end = vma->vm_end;
 	}
 
-	show_vma_header_prefix(m, priv->mm->mmap->vm_start,
+	show_vma_header_prefix(m, priv->mm->mmap ? priv->mm->mmap->vm_start : 0,
 			       last_vma_end, 0, 0, 0, 0);
 	seq_pad(m, ' ');
 	seq_puts(m, "[rollup]\n");
@@ -930,7 +953,7 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
 	__show_smap(m, &mss);
 
 	release_task_mempolicy(priv);
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 
 out_put_mm:
 	mmput(mm);
@@ -1191,6 +1214,7 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 		return -ESRCH;
 	mm = get_task_mm(task);
 	if (mm) {
+		struct mmu_notifier_range range;
 		struct clear_refs_private cp = {
 			.type = type,
 		};
@@ -1202,7 +1226,7 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 		};
 
 		if (type == CLEAR_REFS_MM_HIWATER_RSS) {
-			if (down_write_killable(&mm->mmap_sem)) {
+			if (mmap_write_lock_killable(mm)) {
 				count = -EINTR;
 				goto out_mm;
 			}
@@ -1212,11 +1236,11 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 			 * resident set size to this mm's current rss value.
 			 */
 			reset_mm_hiwater_rss(mm);
-			up_write(&mm->mmap_sem);
+			mmap_write_unlock(mm);
 			goto out_mm;
 		}
 
-		if (down_read_killable(&mm->mmap_sem)) {
+		if (mmap_read_lock_killable(mm)) {
 			count = -EINTR;
 			goto out_mm;
 		}
@@ -1225,8 +1249,8 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 			for (vma = mm->mmap; vma; vma = vma->vm_next) {
 				if (!(vma->vm_flags & VM_SOFTDIRTY))
 					continue;
-				up_read(&mm->mmap_sem);
-				if (down_write_killable(&mm->mmap_sem)) {
+				mmap_read_unlock(mm);
+				if (mmap_write_lock_killable(mm)) {
 					count = -EINTR;
 					goto out_mm;
 				}
@@ -1245,26 +1269,26 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 					 * failed like if
 					 * get_proc_task() fails?
 					 */
-					up_write(&mm->mmap_sem);
+					mmap_write_unlock(mm);
 					goto out_mm;
 				}
 				for (vma = mm->mmap; vma; vma = vma->vm_next) {
-					vm_write_begin(vma);
-					WRITE_ONCE(vma->vm_flags,
-						vma->vm_flags & ~VM_SOFTDIRTY);
+					vma->vm_flags &= ~VM_SOFTDIRTY;
 					vma_set_page_prot(vma);
-					vm_write_end(vma);
 				}
-				downgrade_write(&mm->mmap_sem);
+				mmap_write_downgrade(mm);
 				break;
 			}
-			mmu_notifier_invalidate_range_start(mm, 0, -1);
+
+			mmu_notifier_range_init(&range, MMU_NOTIFY_UNMAP, 0,
+						NULL, mm, 0, -1UL);
+			mmu_notifier_invalidate_range_start(&range);
 		}
 		walk_page_range(0, mm->highest_vm_end, &clear_refs_walk);
 		if (type == CLEAR_REFS_SOFT_DIRTY)
-			mmu_notifier_invalidate_range_end(mm, 0, -1);
+			mmu_notifier_invalidate_range_end(&range);
 		tlb_finish_mmu(&tlb, 0, -1);
-		up_read(&mm->mmap_sem);
+		mmap_read_unlock(mm);
 out_mm:
 		mmput(mm);
 	}
@@ -1626,11 +1650,11 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 		/* overflow ? */
 		if (end < start_vaddr || end > end_vaddr)
 			end = end_vaddr;
-		ret = down_read_killable(&mm->mmap_sem);
+		ret = mmap_read_lock_killable(mm);
 		if (ret)
 			goto out_free;
 		ret = walk_page_range(start_vaddr, end, &pagemap_walk);
-		up_read(&mm->mmap_sem);
+		mmap_read_unlock(mm);
 		start_vaddr = end;
 
 		len = min(count, PM_ENTRY_BYTES * pm.pos);
@@ -1704,7 +1728,7 @@ static int reclaim_pte_range(pmd_t *pmd, unsigned long addr,
 	if (pmd_trans_unstable(pmd))
 		return 0;
 cont:
-	if (rwsem_is_contended(&walk->mm->mmap_sem))
+	if (rwsem_is_contended(&walk->mm->mmap_lock))
 		return -1;
 
 	isolated = 0;
@@ -1760,19 +1784,21 @@ cont:
 }
 
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
+static DEFINE_SPINLOCK(writeback_lock);
+static bool writeback_ongoing;
+
 static int writeback_pte_range(pmd_t *pmd, unsigned long addr,
 		unsigned long end, struct mm_walk *walk)
 {
 	struct mm_struct *mm = walk->mm;
-	struct zwbs **zwbs = walk->private;
+	struct list_head *list = walk->private;
 	pte_t *pte, ptent;
 	spinlock_t *ptl;
-	LIST_HEAD(swp_entry_list);
 
 	split_huge_pmd(vma, pmd, addr);
 	if (pmd_trans_unstable(pmd))
 		return 0;
-	if (rwsem_is_contended(&mm->mmap_sem))
+	if (rwsem_is_contended(&mm->mmap_lock))
 		return -1;
 	if (zram_is_app_launch())
 		return -EBUSY;
@@ -1786,13 +1812,40 @@ static int writeback_pte_range(pmd_t *pmd, unsigned long addr,
 				continue;
 			if (swp_swapcount(entry) > 1)
 				continue;
-			swap_add_to_list(&swp_entry_list, entry);
+			zram_add_to_writeback_list(list, swp_offset(entry));
 		}
 	}
 	pte_unmap_unlock(pte - 1, ptl);
-	swap_writeback_list(zwbs, &swp_entry_list);
 
 	cond_resched();
+	return 0;
+}
+
+static int prefetch_pte_range(pmd_t *pmd, unsigned long start,
+		unsigned long end, struct mm_walk *walk)
+{
+	struct mm_struct *mm = walk->mm;
+	pte_t *orig_pte, pte;
+	spinlock_t *ptl;
+	swp_entry_t entry;
+	unsigned long index;
+
+	if (pmd_trans_unstable(pmd))
+		return 0;
+
+	for (index = start; index != end; index += PAGE_SIZE) {
+		orig_pte = pte_offset_map_lock(mm, pmd, start, &ptl);
+		pte = *(orig_pte + ((index - start) / PAGE_SIZE));
+		pte_unmap_unlock(orig_pte, ptl);
+
+		if (pte_present(pte) || pte_none(pte))
+			continue;
+		entry = pte_to_swp_entry(pte);
+		if (unlikely(non_swap_entry(entry)))
+			continue;
+
+		zram_prefetch_entry(swp_offset(entry));
+	}
 	return 0;
 }
 #endif
@@ -1804,6 +1857,7 @@ enum reclaim_type {
 	RECLAIM_RANGE,
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
 	RECLAIM_WRITEBACK,
+	PREFETCH_PROCESS,
 #endif
 };
 
@@ -1820,7 +1874,7 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 	unsigned long start = 0;
 	unsigned long end = 0;
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
-	struct zwbs *zwbs[NR_ZWBS];
+	LIST_HEAD(list);
 #endif
 	int err;
 
@@ -1843,6 +1897,8 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
 	else if (!strcmp(type_buf, "writeback"))
 		type = RECLAIM_WRITEBACK;
+	else if (!strcmp(type_buf, "prefetch"))
+		type = PREFETCH_PROCESS;
 #endif
 	else
 		goto out_err;
@@ -1881,18 +1937,23 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 			goto out_err;
 	}
 
+#ifdef CONFIG_ZRAM_LRU_WRITEBACK
+	/* we only allow single MADV_WRITEBACK at a time */
+	if (type == RECLAIM_WRITEBACK) {
+		spin_lock(&writeback_lock);
+		if (writeback_ongoing) {
+			spin_unlock(&writeback_lock);
+			return -EBUSY;
+		}
+		writeback_ongoing = true;
+		spin_unlock(&writeback_lock);
+	}
+#endif
+
 	task = get_proc_task(file->f_path.dentry->d_inode);
 	if (!task)
 		return -ESRCH;
 
-#ifdef CONFIG_ZRAM_LRU_WRITEBACK
-	if (type == RECLAIM_WRITEBACK) {
-		if (alloc_zwbs(zwbs)) {
-			pr_info("%s alloc_zwbs failed", __func__);
-			return -ENOMEM;
-		}
-	}
-#endif
 	mm = get_task_mm(task);
 	if (!mm)
 		goto out;
@@ -1900,7 +1961,7 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 	reclaim_walk.mm = mm;
 	reclaim_walk.pmd_entry = reclaim_pte_range;
 
-	down_read(&mm->mmap_sem);
+	mmap_read_lock(mm);
 	if (type == RECLAIM_RANGE) {
 		vma = find_vma(mm, start);
 		while (vma) {
@@ -1929,11 +1990,14 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 
 			reclaim_walk.private = vma;
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
+			if ((type == RECLAIM_WRITEBACK ||
+			     type == PREFETCH_PROCESS) && vma->vm_file)
+				continue;
 			if (type == RECLAIM_WRITEBACK) {
-				if (vma->vm_file)
-					continue;
+				reclaim_walk.private = (void *)&list;
 				reclaim_walk.pmd_entry = writeback_pte_range;
-				reclaim_walk.private = (void *)zwbs;
+			} else if (type == PREFETCH_PROCESS) {
+				reclaim_walk.pmd_entry = prefetch_pte_range;
 			}
 #endif
 			err = walk_page_range(vma->vm_start, vma->vm_end,
@@ -1946,14 +2010,18 @@ static ssize_t reclaim_write(struct file *file, const char __user *buf,
 	}
 
 	flush_tlb_mm(mm);
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 	mmput(mm);
 out:
 	put_task_struct(task);
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
 	if (type == RECLAIM_WRITEBACK) {
-		swap_writeback_list(zwbs, NULL);
-		free_zwbs(zwbs);
+		zram_writeback_list(&list);
+		flush_writeback_buffer(&list);
+
+		spin_lock(&writeback_lock);
+		writeback_ongoing = false;
+		spin_unlock(&writeback_lock);
 	}
 #endif
 	return count;
@@ -2416,7 +2484,7 @@ static void file_check(struct seq_file *m, struct vm_area_struct *vma)
 			index = indices[i];
 			if (index >= end)
 				break;
-			if (radix_tree_exceptional_entry(page))
+			if (xa_is_value(page))
 				continue;
 			if (!trylock_page(page))
 				continue;

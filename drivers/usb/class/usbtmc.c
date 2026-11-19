@@ -1469,9 +1469,7 @@ static const struct file_operations fops = {
 	.open		= usbtmc_open,
 	.release	= usbtmc_release,
 	.unlocked_ioctl	= usbtmc_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl	= usbtmc_ioctl,
-#endif
+	.compat_ioctl	= compat_ptr_ioctl,
 	.fasync         = usbtmc_fasync,
 	.poll           = usbtmc_poll,
 	.llseek		= default_llseek,
@@ -1537,17 +1535,10 @@ static void usbtmc_interrupt(struct urb *urb)
 		dev_err(dev, "overflow with length %d, actual length is %d\n",
 			data->iin_wMaxPacketSize, urb->actual_length);
 		/* fall through */
-	case -ECONNRESET:
-	case -ENOENT:
-	case -ESHUTDOWN:
-	case -EILSEQ:
-	case -ETIME:
-	case -EPIPE:
+	default:
 		/* urb terminated, clean up */
 		dev_dbg(dev, "urb terminated, status: %d\n", status);
 		return;
-	default:
-		dev_err(dev, "unknown status received: %d\n", status);
 	}
 exit:
 	rv = usb_submit_urb(urb, GFP_ATOMIC);

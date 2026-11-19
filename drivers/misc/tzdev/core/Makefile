@@ -23,9 +23,12 @@ obj-$(CONFIG_TZLOG)		+= iwlog.o
 
 obj-$(CONFIG_TZDEV_DEPLOY_TZAR)	+= deploy_tzar.o
 
+obj-$(CONFIG_TZDEV_KTHREADS_NOTIFIER)	+= kthread_pool_notifier.o
 obj-$(CONFIG_TZDEV_KTHREADS_SMPBOOT)	+= kthread_pool_smpboot.o
 
 ifeq ($(CONFIG_MSM_SCM), y)
+obj-$(CONFIG_TZDEV)		+= qc_platform.o
+obj-$(CONFIG_TZDEV)		+= qc_clocks.o
 else
 obj-$(CONFIG_TZDEV)		+= platform.o
 endif

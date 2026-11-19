@@ -97,6 +97,7 @@ static LIST_HEAD(drvdata_list);
 #define S3C64XX_SPI_ST_TX_FIFORDY		(1<<0)
 
 #define S3C64XX_SPI_PACKET_CNT_EN		(1<<16)
+#define S3C64XX_SPI_PACKET_CNT_MASK		GENMASK(15, 0)
 
 #define S3C64XX_SPI_PND_TX_UNDERRUN_CLR		(1<<4)
 #define S3C64XX_SPI_PND_TX_OVERRUN_CLR		(1<<3)
@@ -169,47 +170,6 @@ struct s3c64xx_spi_port_config {
 	bool	high_speed;
 	bool	clk_from_cmu;
 };
-
-#ifdef CONFIG_SAMSUNG_TUI
-int stui_spi_lock(struct spi_master *spi)
-{
-	int ret = 0;
-#ifdef CONFIG_PM
-	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(spi);
-#endif
-	(void)ret;
-
-	spi_bus_lock(spi);
-
-#ifdef CONFIG_PM
-	ret = pm_runtime_get_sync(&sdd->pdev->dev);
-#endif
-	if (ret < 0)
-		spi_bus_unlock(spi);
-
-	return ret;
-}
-
-int stui_spi_unlock(struct spi_master *spi)
-{
-#ifdef CONFIG_PM
-	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(spi);
-	int ret;
-#endif
-	spi_bus_unlock(spi);
-
-#ifdef CONFIG_PM
-	pm_runtime_mark_last_busy(&sdd->pdev->dev);
-	ret = pm_runtime_put_autosuspend(&sdd->pdev->dev);
-	if (ret < 0) {
-		dev_err(&sdd->pdev->dev, "pm_runtime_put_autosuspend fails. ret: %d", ret);
-		return ret;
-	}
-#endif
-
-	return 0;
-}
-#endif
 
 static ssize_t
 spi_dbg_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -318,7 +278,7 @@ static void flush_fifo(struct s3c64xx_spi_driver_data *sdd)
 	loops = msecs_to_loops(1);
 	do {
 		val = readl(regs + S3C64XX_SPI_STATUS);
-	} while (TX_FIFO_LVL(val, sdd) && loops--);
+	} while (TX_FIFO_LVL(val, sdd) && --loops);
 
 	if (loops == 0)
 		dev_warn(&sdd->pdev->dev, "Timed out flushing TX FIFO\n");
@@ -331,7 +291,7 @@ static void flush_fifo(struct s3c64xx_spi_driver_data *sdd)
 			readl(regs + S3C64XX_SPI_RX_DATA);
 		else
 			break;
-	} while (loops--);
+	} while (--loops);
 
 	if (loops == 0)
 		dev_warn(&sdd->pdev->dev, "Timed out flushing RX FIFO\n");
@@ -634,8 +594,10 @@ static void enable_datapath(struct s3c64xx_spi_driver_data *sdd,
 		}
 	}
 
+
 	writel(modecfg, regs + S3C64XX_SPI_MODE_CFG);
 	writel(chcfg, regs + S3C64XX_SPI_CH_CFG);
+
 }
 
 static inline void enable_cs(struct s3c64xx_spi_driver_data *sdd,
@@ -775,8 +737,8 @@ static void s3c64xx_spi_config(struct s3c64xx_spi_driver_data *sdd)
 {
 	struct s3c64xx_spi_info *sci = sdd->cntrlr_info;
 	void __iomem *regs = sdd->regs;
-	u32 val;
 	int ret;
+	u32 val;
 
 	/* Disable Clock */
 	if (!sdd->port_conf->clk_from_cmu) {
@@ -993,7 +955,6 @@ static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 
 		unsigned long flags;
 		int use_dma;
-
 		reinit_completion(&sdd->xfer_completion);
 
 		/* Only BPW and Speed may change across transfers */
@@ -1073,6 +1034,7 @@ try_transfer:
 			/* Slave Select */
 			enable_cs(sdd, spi);
 		}
+
 
 		spin_unlock_irqrestore(&sdd->lock, flags);
 
@@ -1179,6 +1141,15 @@ out:
 
 	return 0;
 }
+
+static size_t s3c64xx_spi_max_transfer_size(struct spi_device *spi)
+{
+	struct spi_controller *ctlr = spi->controller;
+
+	return ctlr->can_dma ? S3C64XX_SPI_PACKET_CNT_MASK : SIZE_MAX;
+}
+
+
 
 static struct s3c64xx_spi_csinfo *s3c64xx_get_slave_ctrldata(
 				struct spi_device *spi)
@@ -1698,6 +1669,7 @@ static int s3c64xx_spi_probe(struct platform_device *pdev)
 	master->prepare_transfer_hardware = s3c64xx_spi_prepare_transfer;
 	master->transfer_one_message = s3c64xx_spi_transfer_one_message;
 	master->unprepare_transfer_hardware = s3c64xx_spi_unprepare_transfer;
+	master->max_transfer_size = s3c64xx_spi_max_transfer_size;
 	master->num_chipselect = sci->num_cs;
 	master->dma_alignment = 8;
 	master->bits_per_word_mask = BIT(32 - 1) | BIT(16 - 1) | BIT(8 - 1);

@@ -13,4 +13,5 @@ obj-				:=
 
 ccflags-y := -Wformat
 
+obj-$(CONFIG_SEC_PERF_LATENCYCHECKER)   += sec_perf_latencychecker.o
 obj-$(CONFIG_SEC_BOOTSTAT)	+= sec_bootstat.o

@@ -28,6 +28,19 @@ config SND_SOC_SAMSUNG_ABOX_VERSION
 	  Value = 0x10000 * major + 0x100 * minor + rev.
 	  Ex. 1.01 rev0 => 0x10100, 1.25 rev1 => 0x12501
 
+config SND_SOC_SAMSUNG_ABOX_V1
+	bool
+	depends on SND_SOC_SAMSUNG_ABOX
+	default y if SND_SOC_SAMSUNG_ABOX_VERSION < 0x20000
+	default n if SND_SOC_SAMSUNG_ABOX_VERSION >= 0x20000
+
+config SND_SOC_SAMSUNG_ABOX_V2
+	bool
+	depends on SND_SOC_SAMSUNG_ABOX
+	default n if SND_SOC_SAMSUNG_ABOX_VERSION < 0x20000
+	default y if SND_SOC_SAMSUNG_ABOX_VERSION >= 0x20000 \
+		&& SND_SOC_SAMSUNG_ABOX_VERSION < 0x21000
+
 config SND_SOC_SAMSUNG_ABOX_V3
 	bool
 	depends on SND_SOC_SAMSUNG_ABOX

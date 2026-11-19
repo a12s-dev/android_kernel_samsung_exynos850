@@ -57,9 +57,11 @@ int sec_calc_ttf(struct sec_battery_info * battery, unsigned int ttf_curr)
 			cc_time = 0;
 	}
 
+#ifdef BATTERY_INFO_DEBUG
 	pr_info("%s: cap: %d, soc: %4d, T: %6d, avg: %4d, cv soc: %4d, i: %4d, val: %d\n",
 	     __func__, design_cap, soc, cv_time + cc_time,
 	     battery->current_avg, cv_data[i].soc, i, ttf_curr);
+#endif
 
 	if (cv_time + cc_time >= 0)
 		return cv_time + cc_time + 60;
@@ -67,11 +69,12 @@ int sec_calc_ttf(struct sec_battery_info * battery, unsigned int ttf_curr)
 		return 60;	/* minimum 1minutes */
 }
 
+#define FULL_CAPACITY 850
 int sec_calc_ttf_to_full_capacity(struct sec_battery_info *battery, unsigned int ttf_curr)
 {
 	struct sec_cv_slope *cv_data = battery->ttf_d->cv_data;
 	int i, cc_time = 0, cv_time = 0;
-	int soc = battery->batt_full_capacity * 10;
+	int soc = FULL_CAPACITY;
 	int charge_current = ttf_curr;
 	int design_cap = battery->ttf_d->ttf_capacity;
 
@@ -156,13 +159,15 @@ void sec_bat_calc_time_to_full(struct sec_battery_info * battery)
 					battery->pdata->charging_current[battery->cable_type].fast_charging_current : (battery->max_charge_power / 5);
 		}
 		if (battery->batt_full_capacity > 0 && battery->batt_full_capacity < 100) {
-			pr_info("%s: time to %d percent\n", __func__, battery->batt_full_capacity);
+			pr_info("%s: time to 85 percent\n", __func__);
 			battery->ttf_d->timetofull =
 				sec_calc_ttf(battery, charge) - sec_calc_ttf_to_full_capacity(battery, charge);
 		} else
 			battery->ttf_d->timetofull = sec_calc_ttf(battery, charge);
+#ifdef BATTERY_INFO_DEBUG
 		dev_info(battery->dev, "%s: T: %5d sec, passed time: %5ld, current: %d\n",
 				__func__, battery->ttf_d->timetofull, battery->charging_passed_time, charge);
+#endif
 	} else {
 		battery->ttf_d->timetofull = -1;
 	}

@@ -36,6 +36,7 @@ struct __sensor_param {
 	struct mutex lock;
 	struct list_head first_tz;
 };
+
 /*
  * struct virtual_sensor - internal representation of a virtual thermal zone
  * @num_sensors - number of sensors this virtual sensor will reference to

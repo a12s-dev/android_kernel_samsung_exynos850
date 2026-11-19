@@ -130,6 +130,7 @@
 #include <linux/inetdevice.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
+#include <linux/indirect_call_wrapper.h>
 
 #include <net/snmp.h>
 #include <net/ip.h>
@@ -188,51 +189,53 @@ bool ip_call_ra_chain(struct sk_buff *skb)
 	return false;
 }
 
+INDIRECT_CALLABLE_DECLARE(int udp_rcv(struct sk_buff *));
+INDIRECT_CALLABLE_DECLARE(int tcp_v4_rcv(struct sk_buff *));
+void ip_protocol_deliver_rcu(struct net *net, struct sk_buff *skb, int protocol)
+{
+	const struct net_protocol *ipprot;
+	int raw, ret;
+
+resubmit:
+	raw = raw_local_deliver(skb, protocol);
+
+	ipprot = rcu_dereference(inet_protos[protocol]);
+	if (ipprot) {
+		if (!ipprot->no_policy) {
+			if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb)) {
+				kfree_skb(skb);
+				return;
+			}
+			nf_reset(skb);
+		}
+		ret = INDIRECT_CALL_2(ipprot->handler, tcp_v4_rcv, udp_rcv,
+				      skb);
+		if (ret < 0) {
+			protocol = -ret;
+			goto resubmit;
+		}
+		__IP_INC_STATS(net, IPSTATS_MIB_INDELIVERS);
+	} else {
+		if (!raw) {
+			if (xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb)) {
+				__IP_INC_STATS(net, IPSTATS_MIB_INUNKNOWNPROTOS);
+				icmp_send(skb, ICMP_DEST_UNREACH,
+					  ICMP_PROT_UNREACH, 0);
+			}
+			kfree_skb(skb);
+		} else {
+			__IP_INC_STATS(net, IPSTATS_MIB_INDELIVERS);
+			consume_skb(skb);
+		}
+	}
+}
+
 static int ip_local_deliver_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	__skb_pull(skb, skb_network_header_len(skb));
 
 	rcu_read_lock();
-	{
-		int protocol = ip_hdr(skb)->protocol;
-		const struct net_protocol *ipprot;
-		int raw;
-
-	resubmit:
-		raw = raw_local_deliver(skb, protocol);
-
-		ipprot = rcu_dereference(inet_protos[protocol]);
-		if (ipprot) {
-			int ret;
-
-			if (!ipprot->no_policy) {
-				if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb)) {
-					kfree_skb(skb);
-					goto out;
-				}
-				nf_reset(skb);
-			}
-			ret = ipprot->handler(skb);
-			if (ret < 0) {
-				protocol = -ret;
-				goto resubmit;
-			}
-			__IP_INC_STATS(net, IPSTATS_MIB_INDELIVERS);
-		} else {
-			if (!raw) {
-				if (xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb)) {
-					__IP_INC_STATS(net, IPSTATS_MIB_INUNKNOWNPROTOS);
-					icmp_send(skb, ICMP_DEST_UNREACH,
-						  ICMP_PROT_UNREACH, 0);
-				}
-				kfree_skb(skb);
-			} else {
-				__IP_INC_STATS(net, IPSTATS_MIB_INDELIVERS);
-				consume_skb(skb);
-			}
-		}
-	}
- out:
+	ip_protocol_deliver_rcu(net, skb, ip_hdr(skb)->protocol);
 	rcu_read_unlock();
 
 	return 0;
@@ -257,6 +260,7 @@ int ip_local_deliver(struct sk_buff *skb)
 		       net, NULL, skb, skb->dev, NULL,
 		       ip_local_deliver_finish);
 }
+EXPORT_SYMBOL(ip_local_deliver);
 
 static inline bool ip_rcv_options(struct sk_buff *skb, struct net_device *dev)
 {
@@ -306,28 +310,53 @@ drop:
 	return true;
 }
 
+static bool ip_can_use_hint(const struct sk_buff *skb, const struct iphdr *iph,
+			    const struct sk_buff *hint)
+{
+	return hint && !skb_dst(skb) && ip_hdr(hint)->daddr == iph->daddr &&
+	       ip_hdr(hint)->tos == iph->tos;
+}
+
+int tcp_v4_early_demux(struct sk_buff *skb);
+int udp_v4_early_demux(struct sk_buff *skb);
 static int ip_rcv_finish_core(struct net *net, struct sock *sk,
-			      struct sk_buff *skb, struct net_device *dev)
+			      struct sk_buff *skb, struct net_device *dev,
+			      const struct sk_buff *hint)
 {
 	const struct iphdr *iph = ip_hdr(skb);
-	int (*edemux)(struct sk_buff *skb);
 	struct rtable *rt;
 	int err;
 
-	if (net->ipv4.sysctl_ip_early_demux &&
+	if (ip_can_use_hint(skb, iph, hint)) {
+		err = ip_route_use_hint(skb, iph->daddr, iph->saddr, iph->tos,
+					dev, hint);
+		if (unlikely(err))
+			goto drop_error;
+	}
+
+	if (READ_ONCE(net->ipv4.sysctl_ip_early_demux) &&
 	    !skb_dst(skb) &&
 	    !skb->sk &&
 	    !ip_is_fragment(iph)) {
-		const struct net_protocol *ipprot;
-		int protocol = iph->protocol;
+		switch (iph->protocol) {
+		case IPPROTO_TCP:
+			if (READ_ONCE(net->ipv4.sysctl_tcp_early_demux)) {
+				tcp_v4_early_demux(skb);
 
-		ipprot = rcu_dereference(inet_protos[protocol]);
-		if (ipprot && (edemux = READ_ONCE(ipprot->early_demux))) {
-			err = edemux(skb);
-			if (unlikely(err))
-				goto drop_error;
-			/* must reload iph, skb->head might have changed */
-			iph = ip_hdr(skb);
+				/* must reload iph, skb->head might have changed */
+				iph = ip_hdr(skb);
+			}
+			break;
+		case IPPROTO_UDP:
+			if (READ_ONCE(net->ipv4.sysctl_udp_early_demux)) {
+				err = udp_v4_early_demux(skb);
+				if (unlikely(err))
+					goto drop_error;
+
+				/* must reload iph, skb->head might have changed */
+				iph = ip_hdr(skb);
+			}
+			break;
 		}
 	}
 
@@ -409,7 +438,7 @@ static int ip_rcv_finish(struct net *net, struct sock *sk, struct sk_buff *skb)
 	if (!skb)
 		return NET_RX_SUCCESS;
 
-	ret = ip_rcv_finish_core(net, sk, skb, dev);
+	ret = ip_rcv_finish_core(net, sk, skb, dev, NULL);
 	if (ret != NET_RX_DROP)
 		ret = dst_input(skb);
 	return ret;
@@ -496,7 +525,8 @@ static struct sk_buff *ip_rcv_core(struct sk_buff *skb, struct net *net)
 	IPCB(skb)->iif = skb->skb_iif;
 
 	/* Must drop socket now because of tproxy. */
-	skb_orphan(skb);
+	if (!skb_sk_is_prefetched(skb))
+		skb_orphan(skb);
 
 	return skb;
 
@@ -540,11 +570,21 @@ static void ip_sublist_rcv_finish(struct list_head *head)
 	}
 }
 
+static struct sk_buff *ip_extract_route_hint(const struct net *net,
+					     struct sk_buff *skb, int rt_type)
+{
+	if (fib4_has_custom_rules(net) || rt_type == RTN_BROADCAST ||
+	    IPCB(skb)->flags & IPSKB_MULTIPATH)
+		return NULL;
+
+	return skb;
+}
+
 static void ip_list_rcv_finish(struct net *net, struct sock *sk,
 			       struct list_head *head)
 {
+	struct sk_buff *skb, *next, *hint = NULL;
 	struct dst_entry *curr_dst = NULL;
-	struct sk_buff *skb, *next;
 	struct list_head sublist;
 
 	INIT_LIST_HEAD(&sublist);
@@ -559,11 +599,14 @@ static void ip_list_rcv_finish(struct net *net, struct sock *sk,
 		skb = l3mdev_ip_rcv(skb);
 		if (!skb)
 			continue;
-		if (ip_rcv_finish_core(net, sk, skb, dev) == NET_RX_DROP)
+		if (ip_rcv_finish_core(net, sk, skb, dev, hint) == NET_RX_DROP)
 			continue;
 
 		dst = skb_dst(skb);
 		if (curr_dst != dst) {
+			hint = ip_extract_route_hint(net, skb,
+					       ((struct rtable *)dst)->rt_type);
+
 			/* dispatch old sublist */
 			if (!list_empty(&sublist))
 				ip_sublist_rcv_finish(&sublist);

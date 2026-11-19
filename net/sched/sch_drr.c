@@ -79,7 +79,8 @@ static int drr_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 		return -EINVAL;
 	}
 
-	err = nla_parse_nested(tb, TCA_DRR_MAX, opt, drr_policy, extack);
+	err = nla_parse_nested_deprecated(tb, TCA_DRR_MAX, opt, drr_policy,
+					  extack);
 	if (err < 0)
 		return err;
 
@@ -134,7 +135,7 @@ static int drr_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 					    tca[TCA_RATE]);
 		if (err) {
 			NL_SET_ERR_MSG(extack, "Failed to replace estimator");
-			qdisc_destroy(cl->qdisc);
+			qdisc_put(cl->qdisc);
 			kfree(cl);
 			return err;
 		}
@@ -153,7 +154,7 @@ static int drr_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 static void drr_destroy_class(struct Qdisc *sch, struct drr_class *cl)
 {
 	gen_kill_estimator(&cl->rate_est);
-	qdisc_destroy(cl->qdisc);
+	qdisc_put(cl->qdisc);
 	kfree(cl);
 }
 
@@ -253,7 +254,7 @@ static int drr_dump_class(struct Qdisc *sch, unsigned long arg,
 	tcm->tcm_handle	= cl->common.classid;
 	tcm->tcm_info	= cl->qdisc->handle;
 
-	nest = nla_nest_start(skb, TCA_OPTIONS);
+	nest = nla_nest_start_noflag(skb, TCA_OPTIONS);
 	if (nest == NULL)
 		goto nla_put_failure;
 	if (nla_put_u32(skb, TCA_DRR_QUANTUM, cl->quantum))

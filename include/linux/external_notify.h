@@ -5,7 +5,7 @@
  * header file supporting usb notify layer
  * external notify call chain information
  *
- * Copyright (C) 2016-2020 Samsung Electronics
+ * Copyright (C) 2016-2021 Samsung Electronics
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  *
  */
 
-  /* usb notify layer v3.5 */
+  /* usb notify layer v3.6 */
 
 #ifndef __EXTERNAL_NOTIFY_H__
 #define __EXTERNAL_NOTIFY_H__
@@ -66,7 +66,6 @@ extern int send_external_notify(unsigned long cmd, int data);
 extern int usb_external_notify_register(struct notifier_block *nb,
 		notifier_fn_t notifier, int listener);
 extern int usb_external_notify_unregister(struct notifier_block *nb);
-extern void external_notifier_init(void);
 #else
 static inline int send_external_notify(unsigned long cmd,
 			int data) {return 0; }
@@ -74,7 +73,6 @@ static inline int usb_external_notify_register(struct notifier_block *nb,
 			notifier_fn_t notifier, int listener) {return 0; }
 static inline int usb_external_notify_unregister(struct notifier_block *nb)
 			{return 0; }
-static inline void external_notifier_init(void) {}
 #endif
 
 #endif /* __EXTERNAL_NOTIFY_H__ */

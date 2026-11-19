@@ -66,10 +66,10 @@ static bool is_dma_coherent(struct device *dev, unsigned long attrs)
 }
 static struct gen_pool *atomic_pool __ro_after_init;
 
+#define NO_KERNEL_MAPPING_DUMMY 0x2222
 #ifdef CONFIG_USB_XHCI_ALLOC_FROM_DMA_POOL
 #define DEFAULT_DMA_COHERENT_POOL_SIZE  SZ_4M
 #else
-#define NO_KERNEL_MAPPING_DUMMY 0x2222
 #define DEFAULT_DMA_COHERENT_POOL_SIZE  SZ_256K
 #endif
 static size_t atomic_pool_size __initdata = DEFAULT_DMA_COHERENT_POOL_SIZE;
