@@ -33,12 +33,12 @@
 		SET_MUIC_NOTIFIER_BLOCK(nb, NULL, -1)
 
 static struct muic_notifier_struct muic_notifier;
-#if IS_ENABLED(CONFIG_PDIC_SLSI_NON_MCU)
+#if IS_ENABLED(CONFIG_PDIC_NOTIFIER)
 static struct muic_notifier_struct muic_pdic_notifier;
 #endif
 
 static int muic_uses_new_noti;
-#if IS_ENABLED(CONFIG_PDIC_SLSI_NON_MCU)
+#if IS_ENABLED(CONFIG_PDIC_NOTIFIER)
 static int muic_pdic_uses_new_noti;
 #endif
 
