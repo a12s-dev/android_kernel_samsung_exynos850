@@ -934,7 +934,9 @@ static int muic_core_handle_attached_new_dev(struct muic_platform_data *muic_pda
 
 bool muic_core_get_pdic_cable_state(struct muic_platform_data *muic_pdata)
 {
-	struct muic_interface_t *muic_if = (struct muic_interface_t *)muic_pdata->muic_if;
+	/* only read under CONFIG_MUIC_SUPPORT_PRSWAP below */
+	struct muic_interface_t *muic_if __maybe_unused =
+		(struct muic_interface_t *)muic_pdata->muic_if;
 	bool ret = false;
 
 	pr_info("%s call, attached_dev : %d\n", __func__, muic_pdata->attached_dev);
