@@ -641,7 +641,8 @@ copy:
 
 static int parser_get_ini_phy_data(char *data, int fsize)
 {
-	int i, n = 0, ret = 0, banchmark_flag = 0, empty_section, nodetype_flag = 0;
+	int i, n = 0, ret = 0, empty_section;
+	int banchmark_flag __maybe_unused = 0, nodetype_flag __maybe_unused = 0;
 	int offset = 0, isEqualSign = 0, scount = 0;
 	char *ini_buf = NULL, *tmpSectionName = NULL;
 	char M_CFG_SSL = '[';
