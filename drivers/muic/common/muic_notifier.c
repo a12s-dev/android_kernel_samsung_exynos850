@@ -18,6 +18,8 @@
   *     b'0010 : MUIC
   *     b'1111 : Broadcasting
   */
+struct device *switch_device;
+
 #define NOTI_ADDR_SRC (1 << 1)
 #define NOTI_ADDR_DST (0xf)
 
