@@ -196,9 +196,9 @@ void pdic_event_work(void *data, int dest, int id, int attach, int event, int su
 		pr_info("usb: %s, event_work(%p) is dropped\n", __func__, event_work);
 		kfree(event_work);
 	}
+#endif /* S2MU* usbpd_data available */
 }
 EXPORT_SYMBOL(pdic_event_work);
-#endif /* S2MU* usbpd_data available */
 #endif
 
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)
