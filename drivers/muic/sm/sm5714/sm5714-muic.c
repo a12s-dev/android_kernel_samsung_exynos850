@@ -55,7 +55,6 @@
 #endif /* CONFIG_VBUS_NOTIFIER */
 
 #include <linux/muic/common/muic.h>
-#include <linux/muic/common/muic_interface.h>
 #include <linux/mfd/sm/sm5714/sm5714.h>
 #include <linux/mfd/sm/sm5714/sm5714-private.h>
 #include <linux/muic/sm/sm5714/sm5714-muic.h>
@@ -66,6 +65,13 @@
 
 #if IS_ENABLED(CONFIG_BATTERY_SAMSUNG)
 #include "../../../battery/common/sec_charging_common.h"
+
+/* same bits as enum muic_op_mode in muic_interface.h — we can't include that
+ * header here because it also defines muic_irq_t, which sm5714-muic.h owns */
+#ifndef OPMODE_MUIC
+#define OPMODE_MUIC  0
+#define OPMODE_PDIC  (1 << 0)
+#endif
 #endif
 
 
