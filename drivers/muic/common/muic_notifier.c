@@ -268,7 +268,7 @@ int muic_pdic_notifier_unregister(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(muic_pdic_notifier_unregister);
 
-static int muic_pdic_notifier_notify(void) __maybe_unused
+static __maybe_unused int muic_pdic_notifier_notify(void)
 {
 	int ret = 0;
 #if IS_ENABLED(CONFIG_MUIC_MANAGER) && IS_ENABLED(CONFIG_PDIC_NOTIFIER)
