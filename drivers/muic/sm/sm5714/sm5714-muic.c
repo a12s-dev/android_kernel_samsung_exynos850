@@ -2285,9 +2285,15 @@ static int sm5714_muic_probe(struct platform_device *pdev)
 		goto err_kfree1;
 	}
 
-	/* save platfom data for gpio control functions */
+	/* this tree has no global muic_pdata — allocate via muic_core_init
+	 * like s2mu106 does; core_init also sets static_pdata for the
+	 * afc/hiccup helpers */
 	static_data = muic_data;
-	muic_data->pdata = &muic_pdata;
+	muic_data->pdata = muic_core_init(muic_data);
+	if (unlikely(!muic_data->pdata)) {
+		ret = -ENOMEM;
+		goto err_kfree1;
+	}
 	muic_data->muic_data = muic_data;
 
 #if IS_ENABLED(CONFIG_IF_CB_MANAGER)

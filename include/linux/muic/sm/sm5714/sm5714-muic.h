@@ -336,7 +336,6 @@ struct sm5714_muic_data {
 
 extern struct device *switch_device;
 extern unsigned int system_rev;
-extern struct muic_platform_data muic_pdata;
 
 int sm5714_i2c_read_byte(struct i2c_client *client, u8 command);
 int sm5714_i2c_write_byte(struct i2c_client *client, u8 command, u8 value);
