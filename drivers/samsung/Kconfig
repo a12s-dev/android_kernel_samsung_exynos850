@@ -104,3 +104,4 @@ source "drivers/samsung/debug/Kconfig"
 source "drivers/samsung/pm/Kconfig"
 source "drivers/samsung/perf/Kconfig"
 
+source "drivers/samsung/misc/Kconfig"
