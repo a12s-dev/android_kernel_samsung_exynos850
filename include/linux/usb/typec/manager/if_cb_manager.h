@@ -26,6 +26,8 @@ struct usbpd_ops {
 	int (*usbpd_sbu_test_read)(void *data);
 	void (*usbpd_set_host_on)(void *data, int mode);
 	void (*usbpd_hiccup_cc_command)(int is_off);
+	void (*usbpd_cc_control_command)(void *data, int is_off);
+	void (*usbpd_wait_entermode)(void *data, int on);
 };
 
 struct usb_dev {
