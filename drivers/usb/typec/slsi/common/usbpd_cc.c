@@ -42,6 +42,15 @@
 #include <linux/usb/typec/slsi/s2mu107/usbpd-s2mu107.h>
 #endif
 
+/*
+ * SLSI USBPD core (usbpd_cc) only knows how to talk to S2MU* PDIC chips.
+ * Galaxy A12 uses SM5714 instead, so compile stubs and skip the rest.
+ * pdic_event_work / typec_init are the only symbols the rest of
+ * s2m_pdic_notifier_module links against from this file.
+ */
+#if IS_ENABLED(CONFIG_PDIC_S2MU004) || IS_ENABLED(CONFIG_PDIC_S2MU106) || \
+	IS_ENABLED(CONFIG_PDIC_S2MU205) || IS_ENABLED(CONFIG_PDIC_S2MU107)
+
 #if IS_ENABLED(CONFIG_SUPPORT_USB_TYPEC_OPS)
 static int typec_dr_set(struct typec_port *_port, enum typec_data_role role);
 static int typec_pr_set(struct typec_port *_port, enum typec_role role);
@@ -104,17 +113,7 @@ void pdic_event_work(void *data, int dest, int id, int attach, int event, int su
 	struct s2mu205_usbpd_data *usbpd_data = data;
 #elif IS_ENABLED(CONFIG_PDIC_S2MU107)
 	struct s2mu107_usbpd_data *usbpd_data = data;
-#else
-	/*
-	 * No SLSI USBPD chip (we run SM5714 instead). The SLSI usbpd core
-	 * that calls this isn't active on a12s — bail out before touching
-	 * usbpd_data, which only exists for S2MU* above.
-	 */
-	(void)data; (void)dest; (void)id; (void)attach; (void)event; (void)sub;
-	return;
 #endif
-#if IS_ENABLED(CONFIG_PDIC_S2MU004) || IS_ENABLED(CONFIG_PDIC_S2MU106) || \
-	IS_ENABLED(CONFIG_PDIC_S2MU205) || IS_ENABLED(CONFIG_PDIC_S2MU107)
 	struct pdic_state_work *event_work;
 #if IS_ENABLED(CONFIG_TYPEC)
 	struct typec_partner_desc desc;
@@ -196,7 +195,6 @@ void pdic_event_work(void *data, int dest, int id, int attach, int event, int su
 		pr_info("usb: %s, event_work(%p) is dropped\n", __func__, event_work);
 		kfree(event_work);
 	}
-#endif /* S2MU* usbpd_data available */
 }
 EXPORT_SYMBOL(pdic_event_work);
 #endif
@@ -822,3 +820,21 @@ int typec_init(void *_data)
 }
 EXPORT_SYMBOL(typec_init);
 #endif
+
+
+#else /* no SLSI S2MU PDIC chip */
+
+void pdic_event_work(void *data, int dest, int id, int attach, int event, int sub)
+{
+	(void)data; (void)dest; (void)id; (void)attach; (void)event; (void)sub;
+}
+EXPORT_SYMBOL(pdic_event_work);
+
+int typec_init(void *_data)
+{
+	(void)_data;
+	return 0;
+}
+EXPORT_SYMBOL(typec_init);
+
+#endif /* S2MU* PDIC */
