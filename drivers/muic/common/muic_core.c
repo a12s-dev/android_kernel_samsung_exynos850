@@ -264,6 +264,13 @@ int muic_init_gpio_cb(void *data, int switch_sel)
 
 	pr_info("%s (%d)\n", __func__, switch_sel);
 
+	/* Some MUICs (sm5714) integrate the path switches and expose no
+	 * muic_interface, so there is nothing to switch here. */
+	if (!muic_if) {
+		pr_info("%s: no muic_interface, skipping gpio switch\n", __func__);
+		return 0;
+	}
+
 	if (switch_sel & SWITCH_SEL_USB_MASK) {
 		muic_pdata->usb_path = MUIC_PATH_USB_AP;
 		usb_mode = "PDA";
