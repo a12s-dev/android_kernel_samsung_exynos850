@@ -2814,7 +2814,7 @@ static int panel_parse_lcd_info(struct panel_device *panel)
 	if (!node) {
 		panel_err("%s, panel not found (boot_panel_id 0x%08X)\n",
 				__func__, boot_panel_id);
-		node = of_parse_phandle(dev->of_node, "ddi-info", 0);
+		node = of_parse_phandle(dev->of_node, "ddi_info", 0);
 		if (!node) {
 			panel_err("PANEL:ERR:%s:failed to get phandle of ddi-info\n",
 					__func__);
