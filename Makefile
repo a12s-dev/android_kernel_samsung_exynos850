@@ -772,6 +772,7 @@ endif
 # These warnings generated too much noise in a regular build.
 # Use make W=1 to enable them (see scripts/Makefile.extrawarn)
 KBUILD_CFLAGS += $(call cc-disable-warning, unused-but-set-variable)
+KBUILD_CFLAGS += -Wno-unknown-warning-option
 
 KBUILD_CFLAGS += $(call cc-disable-warning, unused-const-variable)
 

@@ -1,7 +1,7 @@
 ccflags-y += -Wall
 # vendor touch code has a bunch of set-but-never-read locals;
 # don't fail the whole build over them
-ccflags-y += -Wno-unused-but-set-variable
+ccflags-y += $(call cc-option, -Wno-unused-but-set-variable)
 
 obj-y += ili9881x.o \
 	ili9881x_spi.o \
