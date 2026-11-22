@@ -2905,7 +2905,7 @@ static int panel_parse_panel_lookup(struct panel_device *panel)
 		return -EINVAL;
 	}
 
-	if (sz >= ARRAY_SIZE(lut_info->ddi_node)) {
+	if (sz > ARRAY_SIZE(lut_info->ddi_node)) {
 		panel_warn("PANEL:WARN:%s:exceeded MAX_PANEL_DDI size\n", __func__);
 		return -EINVAL;
 	}
