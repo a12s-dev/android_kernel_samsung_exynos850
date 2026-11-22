@@ -54,7 +54,7 @@ static int all_pressed;
 static int num_keys;
 
 /* Proc node to enable hard reset */
-static bool hard_reset_hook_enable = 1;
+static bool hard_reset_hook_enable = 0;
 module_param_named(hard_reset_hook_enable, hard_reset_hook_enable, bool, 0664);
 MODULE_PARM_DESC(hard_reset_hook_enable, "1: Enabled, 0: Disabled");
 

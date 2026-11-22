@@ -505,6 +505,7 @@ struct dma_buf *__ion_alloc(size_t len, unsigned int heap_id_mask,
 			continue;
 		systrace_mark_begin("%s(%s, %zu, 0x%x, 0x%x)\n",
 			__func__, heap->name, len, heap_id_mask, flags);
+		pr_info("IONDBG: try heap %s id=%d len=%zu\n", heap->name, heap->id, len);
 		buffer = ion_buffer_create(heap, dev, len, flags);
 		systrace_mark_end();
 		if (!IS_ERR(buffer))
@@ -517,8 +518,11 @@ struct dma_buf *__ion_alloc(size_t len, unsigned int heap_id_mask,
 		return ERR_PTR(-ENODEV);
 	}
 
-	if (IS_ERR(buffer))
+	if (IS_ERR(buffer)) {
+		pr_info("IONDBG: buffer_create failed %ld mask=%#x len=%zu\n",
+			PTR_ERR(buffer), heap_id_mask, len);
 		return ERR_CAST(buffer);
+	}
 
 	snprintf(expname, ION_EXPNAME_LEN, "ion-%d", buffer->id);
 	exp_info.exp_name = expname;
