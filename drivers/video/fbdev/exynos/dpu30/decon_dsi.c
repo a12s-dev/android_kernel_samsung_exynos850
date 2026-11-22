@@ -387,7 +387,7 @@ static int decon_vsync_thread(void *data)
 	while (!kthread_should_stop()) {
 		ktime_t timestamp = decon->vsync.timestamp;
 		int ret = wait_event_interruptible(decon->vsync.wait,
-			(timestamp != decon->vsync.timestamp) &&
+			kthread_should_stop() || (timestamp != decon->vsync.timestamp) &&
 #if defined(CONFIG_EXYNOS_COMMON_PANEL)
 			(decon->vsync.panel_notify || decon->vsync.active));
 #else
