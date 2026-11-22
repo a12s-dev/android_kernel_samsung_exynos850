@@ -770,3 +770,6 @@ CONFIG_CRYPTO_LZ4=y
 CONFIG_DEFAULT_MMAP_MIN_ADDR=32768
 # --- bring-up: expose the previous boot log ---
 CONFIG_SBD_BOOTLOG=y
+
+# Match the a21s baseline (avoids the clang-13+ auto-var-init enabler flag)
+CONFIG_INIT_STACK_NONE=y
