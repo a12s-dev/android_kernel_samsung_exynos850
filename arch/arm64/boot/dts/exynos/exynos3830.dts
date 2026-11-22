@@ -1118,7 +1118,7 @@
 
 			log_pstore {
 				compatible = "debug-snapshot,log_pstore";
-				reg = <0x00 0xf0f10000 0x8000>;
+				reg = <0x00 0xf1b18000 0x80000>;
 			};
 
 			log_kevents {

@@ -244,8 +244,9 @@ static int __init dss_pstore_init(void)
 	if (dbg_snapshot_get_enable_item("log_pstore")) {
 		dss_ramoops_data.mem_size = dbg_snapshot_get_item_size("log_pstore");
 		dss_ramoops_data.mem_address = dbg_snapshot_get_item_paddr("log_pstore");
-		dss_ramoops_data.pmsg_size = dss_ramoops_data.mem_size / 2;
-		dss_ramoops_data.record_size = dss_ramoops_data.mem_size / 2;
+		dss_ramoops_data.console_size = dss_ramoops_data.mem_size / 2;
+		dss_ramoops_data.pmsg_size = dss_ramoops_data.mem_size / 8;
+		dss_ramoops_data.record_size = dss_ramoops_data.mem_size / 8;
 	}
 	return platform_device_register(&dss_ramoops);
 }
