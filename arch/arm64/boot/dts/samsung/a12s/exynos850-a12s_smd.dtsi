@@ -11,6 +11,10 @@
 		__overlay__ {
 			smd: samsung_mobile_device {
 				compatible = "simple-bus";
+				muic {
+					new_factory;
+					dcd_timeout;
+				};
 				abc_hub {
 					compatible = "samsung,abc_hub";
 					status = "okay";

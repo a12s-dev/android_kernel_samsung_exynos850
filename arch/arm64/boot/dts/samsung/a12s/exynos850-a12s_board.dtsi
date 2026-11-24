@@ -293,6 +293,11 @@
 				sm5714,irq-gpio = <&gpa2 0x05 0x00>;
 				sm5714,wakeup;
 				status = "okay";
+			
+				muic {
+					new_factory;
+					dcd_timeout;
+				};
 			};
 			usbpd-sm5714@33 {
 				compatible = "sm5714-usbpd";
