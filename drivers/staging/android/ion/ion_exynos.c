@@ -37,15 +37,11 @@ struct dma_buf *ion_alloc_dmabuf(const char *heap_name,
 	struct dma_buf *dbuf;
 
 	if (!heap) {
-		pr_info("IONDBG: heap '%s' NOT FOUND\n", heap_name);
 		perrfn("heap '%s' is not found", heap_name);
 		return ERR_PTR(-EINVAL);
 	}
 
 	dbuf = __ion_alloc(len, 1 << heap->id, flags);
-	if (IS_ERR(dbuf))
-		pr_info("IONDBG: alloc '%s' id=%d size=%zu flags=%#x -> %ld\n",
-			heap->name, heap->id, len, flags, PTR_ERR(dbuf));
 	return dbuf;
 }
 
