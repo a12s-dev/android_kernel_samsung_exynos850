@@ -11,6 +11,7 @@ fwdir := $(subst $(quote),,$(CONFIG_EXTRA_FIRMWARE_DIR))
 fwabs := $(addprefix $(srctree)/,$(filter-out /%,$(fwdir)))$(filter /%,$(fwdir))
 
 fw-external-$(CONFIG_SENSORS_SSP) += sensorhub/shub_nacho_bl.bin
+fw-external-$(CONFIG_SHUB) += sensorhub/shub_nacho_bl.bin sensorhub/shub_nacho_a12s.bin
 fw-external-$(CONFIG_SENSORS_SSP_A21S) += sensorhub/shub_nacho_a21s.bin
 fw-external-$(CONFIG_SENSORS_SSP_A21S) += sensorhub/a21s_bring_up.bin
 
