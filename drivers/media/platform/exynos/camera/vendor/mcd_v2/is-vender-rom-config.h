@@ -17,6 +17,8 @@
 
 #if defined(CONFIG_CAMERA_AAS_V21S)
 #include "is-vender-rom-config_aas_v21s.h"
+#elif defined(CONFIG_CAMERA_AAU_V12S)
+#include "is-vender-rom-config_aau_v12s.h"
 #else
 
 const struct is_vender_rom_addr *vender_rom_addr[SENSOR_POSITION_MAX] = {

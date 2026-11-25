@@ -21,6 +21,8 @@
 
 #if defined(CONFIG_CAMERA_AAS_V21S)
 #include "is-vendor-config_aas_v21s.h"
+#elif defined(CONFIG_CAMERA_AAU_V12S)
+#include "is-vendor-config_aau_v12s.h"
 #else
 #include "is-vendor-config_aas_v21s.h"
 #endif
