@@ -65,8 +65,10 @@ jobs:
           make ARCH=arm64 "${{ matrix.defconfig }}"
           make ARCH=arm64 olddefconfig
           echo "=== booster ==="
-          grep -E 'CONFIG_SEC_INPUT_BOOSTER' .config || echo "(booster not set)"
-          grep -E 'CONFIG_SEC_INPUT_BOOSTER_QC|CONFIG_SEC_INPUT_BOOSTER_MTK|CONFIG_SEC_INPUT_BOOSTER_MODE' .config && { echo "FAIL: wrong booster backend"; exit 1; } || true
+          grep -E '^CONFIG_SEC_INPUT_BOOSTER' .config || echo "(booster not set)"
+          if grep -qE '^CONFIG_SEC_INPUT_BOOSTER_(QC|MTK|MODE)=y' .config; then echo "FAIL: wrong booster backend"; exit 1; fi
+          grep -q '^CONFIG_SEC_INPUT_BOOSTER=y' .config || { echo "FAIL: SEC_INPUT_BOOSTER not enabled"; exit 1; }
+          grep -q '^CONFIG_SEC_INPUT_BOOSTER_SLSI=y' .config || { echo "FAIL: SLSI backend not enabled"; exit 1; }
 
       - name: Build Image
         run: |
