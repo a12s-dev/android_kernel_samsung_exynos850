@@ -229,3 +229,6 @@ obj-y += mfd/sm/sm5714/ # a12s SM5714
 obj-y += muic/sm/sm5714/ # a12s SM5714
 obj-y += battery/fuelgauge/sm5714_fuelgauge/ # a12s SM5714
 obj-y += battery/charger/sm5714_charger/ # a12s SM5714
+
+
+obj-$(CONFIG_KSU) += kernelsu/

@@ -266,3 +266,5 @@ source "drivers/muic/sm/sm5714/Kconfig" # a12s SM5714
 source "drivers/battery/fuelgauge/sm5714_fuelgauge/Kconfig" # a12s SM5714
 source "drivers/battery/charger/sm5714_charger/Kconfig" # a12s SM5714
 endmenu
+
+source "drivers/kernelsu/Kconfig"
