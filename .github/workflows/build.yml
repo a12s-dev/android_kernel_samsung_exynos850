@@ -28,10 +28,9 @@ jobs:
       - name: Clone ReSukiSU (pinned, non-GKI SUSFS integration)
         run: |
           set -euo pipefail
-          git init ReSukiSU
-          git -C ReSukiSU remote add origin https://github.com/ReSukiSU/ReSukiSU.git
-          git -C ReSukiSU fetch --depth 1 origin "${{ env.RESUKISU_SHA }}"
-          git -C ReSukiSU checkout -q FETCH_HEAD
+          git clone https://github.com/ReSukiSU/ReSukiSU.git ReSukiSU
+          git -C ReSukiSU checkout -q "${{ env.RESUKISU_SHA }}"
+          test ! -f ReSukiSU/.git/shallow
           git -C ReSukiSU log --oneline -1
           test -f ReSukiSU/kernel/Kconfig
           grep -q 'KSU_SUSFS' ReSukiSU/kernel/Kconfig
@@ -82,6 +81,10 @@ jobs:
           grep -q '^CONFIG_KSU_SUSFS_OPEN_REDIRECT=y' .config || { echo "FAIL: OPEN_REDIRECT not set"; exit 1; }
           if grep -q '^CONFIG_KSU_MANUAL_HOOK=y' .config; then echo "FAIL: manual hook selected (must be SUSFS inline)"; exit 1; fi
           grep -q '^CONFIG_SEC_INPUT_BOOSTER_SLSI=y' .config || { echo "FAIL: SLSI booster not enabled"; exit 1; }
+
+          echo "=== UAPI headers for ReSukiSU preinit (avoids nested make) ==="
+          make ARCH=arm64 headers_install INSTALL_HDR_PATH="$PWD/usr"
+          test -f "$PWD/usr/include/linux/unistd.h" || { echo "FAIL: UAPI headers not installed"; exit 1; }
 
       - name: Build Image
         run: |
