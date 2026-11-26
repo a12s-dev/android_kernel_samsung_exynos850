@@ -1,0 +1,108 @@
+name: Build a12s kernel (KSU+SUSFS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [a12s-ksu-susfs]
+
+permissions:
+  contents: read
+
+env:
+  ARCH: arm64
+  CLANG_VER: clang-r383902
+  CLANG_REF: refs/heads/android-exynos-r11-4.19-android15-qpr2
+  RESUKISU_SHA: d5e9e025b8b49155f8014684d64c91742b465f65
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Clone ReSukiSU (pinned, non-GKI SUSFS integration)
+        run: |
+          set -euo pipefail
+          git init ReSukiSU
+          git -C ReSukiSU remote add origin https://github.com/ReSukiSU/ReSukiSU.git
+          git -C ReSukiSU fetch --depth 1 origin "${{ env.RESUKISU_SHA }}"
+          git -C ReSukiSU checkout -q FETCH_HEAD
+          git -C ReSukiSU log --oneline -1
+          test -f ReSukiSU/kernel/Kconfig
+          grep -q 'KSU_SUSFS' ReSukiSU/kernel/Kconfig
+          readlink drivers/kernelsu
+          test -f drivers/kernelsu/Kbuild
+
+      - name: Cache toolchain
+        id: cache-tc
+        uses: actions/cache@v4
+        with:
+          path: ~/tc
+          key: tc-${{ env.CLANG_VER }}-gcc49-v1
+
+      - name: Download toolchains
+        if: steps.cache-tc.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/tc"
+          cd "$HOME/tc"
+          curl -fL --retry 3 -o clang.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/${CLANG_REF}/${CLANG_VER}.tar.gz"
+          mkdir -p clang && tar -xzf clang.tar.gz -C clang && rm -f clang.tar.gz
+          curl -fL --retry 3 -o gcc64.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android-msm-barbet-4.19-android12L.tar.gz"
+          mkdir -p gcc64 && tar -xzf gcc64.tar.gz -C gcc64 && rm -f gcc64.tar.gz
+          curl -fL --retry 3 -o gcc32.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/heads/android-msm-barbet-4.19-android12L.tar.gz"
+          mkdir -p gcc32 && tar -xzf gcc32.tar.gz -C gcc32 && rm -f gcc32.tar.gz
+          du -sh "$HOME/tc"
+
+      - name: Install deps
+        run: |
+          for p in bc bison flex libssl-dev libelf-dev rsync; do
+            dpkg -s "$p" >/dev/null 2>&1 || { sudo apt-get update -qq; sudo apt-get install -y "$p"; }
+          done
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/tc/clang/bin:$HOME/tc/gcc64/bin:$HOME/tc/gcc32/bin:$PATH"
+          make ARCH=arm64 exynos850-a12snsxx_defconfig
+          make ARCH=arm64 olddefconfig
+          echo "=== KSU / SUSFS config ==="
+          grep -E '^CONFIG_(KSU|KSU_SUSFS)' .config || true
+          grep -q '^CONFIG_KSU=y' .config || { echo "FAIL: CONFIG_KSU not set"; exit 1; }
+          grep -q '^CONFIG_KSU_SUSFS=y' .config || { echo "FAIL: CONFIG_KSU_SUSFS not set"; exit 1; }
+          grep -q '^CONFIG_KSU_SUSFS_SUS_PATH=y' .config || { echo "FAIL: SUS_PATH not set"; exit 1; }
+          grep -q '^CONFIG_KSU_SUSFS_OPEN_REDIRECT=y' .config || { echo "FAIL: OPEN_REDIRECT not set"; exit 1; }
+          if grep -q '^CONFIG_KSU_MANUAL_HOOK=y' .config; then echo "FAIL: manual hook selected (must be SUSFS inline)"; exit 1; fi
+          grep -q '^CONFIG_SEC_INPUT_BOOSTER_SLSI=y' .config || { echo "FAIL: SLSI booster not enabled"; exit 1; }
+
+      - name: Build Image
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/tc/clang/bin:$HOME/tc/gcc64/bin:$HOME/tc/gcc32/bin:$PATH"
+          make ARCH=arm64 \
+            CC="clang" \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_COMPAT=arm-linux-androideabi- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            LD=ld.lld NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
+            -j"$(nproc)" Image 2>&1 | tee build.log
+          ls -la arch/arm64/boot/Image
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a12s-ksu-susfs
+          path: |
+            arch/arm64/boot/Image
+            .config
+            build.log
+          if-no-files-found: warn
