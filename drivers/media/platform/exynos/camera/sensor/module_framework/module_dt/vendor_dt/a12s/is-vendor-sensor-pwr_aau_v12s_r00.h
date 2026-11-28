@@ -19,13 +19,6 @@
 #define SR846_DVDD		SR846_LDO_EN		/* FCAM_DVDD_1P2 */
 #define SR846_RST		<&gpa2 4 0x1>
 
-/***** FRONT - S5K4HA *****/
-#define S5K4HA_IOVDD	<&gpa3 5 0x1>		/* CAM_VDDIO_1P8 */
-#define S5K4HA_LDO_EN	<&gpa3 6 0x1>		/* FCAM_LDO_EN */
-#define S5K4HA_AVDD		S5K4HA_LDO_EN		/* FRONT_AVDD_2P8 */
-#define S5K4HA_DVDD		S5K4HA_LDO_EN		/* FCAM_DVDD_1P2 */
-#define S5K4HA_RST		<&gpa2 4 0x1>
-
 /***** REAR2 SUB - GC02M1 *****/
 #define GC02M1_IOVDD	<&gpa3 5 0x1>		/* CAM_VDDIO_1P8 */
 #define GC02M1_LDO_EN	<&gpg2 6 0x1>		/* RCAM2_LDO_EN */

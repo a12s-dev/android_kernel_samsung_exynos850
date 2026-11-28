@@ -13,7 +13,6 @@
 #include "../../module_sr846d.dtsi"
 #include "../../module_gc02m1.dtsi"
 #include "../../module_gc5035.dtsi"
-#include "../../module_4ha.dtsi"
 
 / {
 	fragment@camera {
@@ -190,90 +189,6 @@
 			}; /* is_sensor_sr846 */
 
 			
-			/* FRONT CAMERA */
-			is_sensor_4ha: is_sensor_4ha@5A {
-				pinctrl-names = "pin0", "pin1", "pin2", "release";
-				pinctrl-0 = <>;
-				pinctrl-1 = <&sensor_mclk1_out>;
-				pinctrl-2 = <&sensor_mclk1_fn>;
-				pinctrl-3 = <>;
-
-				position = <1>; /* Rear:0. Front:1 Rear_sub(Rear2):2, Rear_UW(Rear3): 4, Rear4: 6*/
-				id = <1>; /* sensor node id */
-				mclk_ch = <1>;
-				sensor_i2c_ch = <1>;
-
-				status = "okay";
-
-				power_seq {
-					gpio_mclk = <&gpc0 1 0x1>;
-					scenario_normal_on {
-						sensor_scenario = <SENSOR_SCENARIO_NORMAL>;
-						gpio_scenario = <GPIO_SCENARIO_ON>;
-
-						/* A start node number should be over the 10 for reserved number 0~9. */
-						/* pname = "name"; pin = <act value dealy voltage>; 			gpio = <gpx# # 0x1>; 	*/
-						10 { pname = SEN_RST_LOW; 	pin = <PIN_OUTPUT 0 500>; 		gpio = S5K4HA_RST; 	};
-						20 { pname = "s5k4ha_avdd"; pin = <PIN_OUTPUT 1 0>; 		gpio = S5K4HA_AVDD;	};
-						30 { pname = "s5k4ha_dvdd"; 	pin = <PIN_OUTPUT 1 0>; 	gpio = S5K4HA_DVDD;	};
-						40 { pname = "s5k4ha_iovdd";	pin = <PIN_OUTPUT 1 1000>; 	gpio = S5K4HA_IOVDD;	};
-						50 { pname = "mipi_sel1"; 	pin = <PIN_OUTPUT 1 1000>; 		gpio = MIPI_SEL1; 	};
-						60 { pname = SEN_RST_HIGH; 	pin = <PIN_OUTPUT 1 1000>;		gpio = S5K4HA_RST; 	};
-						70 { pname = MCLK_FUNC;		pin = <PIN_FUNCTION 2 500>; 					};
-						80 { pname = MCLK_GPIO;		pin = <PIN_MCLK 1 0>; 						};
-						90 { pname = I2C_ON;		pin = <PIN_I2C 1 3000>; 					};
-					};
-
-					scenario_normal_off {
-						sensor_scenario = <SENSOR_SCENARIO_NORMAL>;
-						gpio_scenario = <GPIO_SCENARIO_OFF>;
-
-						/* A start node number should be over the 10 for reserved number 0~9. */
-						/* pname = "name"; 		pin = <act value dealy voltage>;	gpio = <gpx# # 0x1>; 	*/
-						10 { pname = DELAY; 		pin = <PIN_NONE 0 500>; 					};
-						20 { pname = I2C_OFF; 		pin = <PIN_I2C 0 0>; 						};
-						30 { pname = MCLK_GPIO; 	pin = <PIN_MCLK 0 500>; 					};
-						40 { pname = MCLK_FUNC; 	pin = <PIN_FUNCTION 1 500>; 					};
-						50 { pname = MCLK_FUNC; 	pin = <PIN_FUNCTION 0 0>; 					};
-						60 { pname = SEN_RST_LOW; 	pin = <PIN_OUTPUT 0 1000>; 			gpio = S5K4HA_RST; 	};
-						70 { pname = "s5k4ha_iovdd"; 	pin = <PIN_OUTPUT 0 0>; 		gpio = S5K4HA_IOVDD;	}; /* CAM_VDDIO_1P8 */
-						80 { pname = "mipi_sel1"; 	pin = <PIN_OUTPUT 0 1000>; 		gpio = MIPI_SEL1; 	};
-						90 { pname = "s5k4ha_dvdd"; 	pin = <PIN_OUTPUT 0 0>; 		gpio = S5K4HA_DVDD;	}; /* RCAM3_DVDD_1P2 */
-						100 { pname = "s5k4ha_avdd"; 	pin = <PIN_OUTPUT 0 1000>; 	gpio = S5K4HA_AVDD;	}; /* RCAM3_AVDD_2P8 */
-					};
-
-					scenario_read_rom_on {
-						sensor_scenario = <SENSOR_SCENARIO_READ_ROM>;
-						gpio_scenario = <GPIO_SCENARIO_ON>;
-
-						10 { pname = SEN_RST_LOW; 	pin = <PIN_OUTPUT 0 500>; 		gpio = S5K4HA_RST; 	};
-						20 { pname = "s5k4ha_avdd"; pin = <PIN_OUTPUT 1 0>; 		gpio = S5K4HA_AVDD;	};
-						30 { pname = "s5k4ha_dvdd"; 	pin = <PIN_OUTPUT 1 0>; 	gpio = S5K4HA_DVDD;	};
-						40 { pname = "s5k4ha_iovdd";	pin = <PIN_OUTPUT 1 1000>; 	gpio = S5K4HA_IOVDD;	};
-						50 { pname = SEN_RST_HIGH; 	pin = <PIN_OUTPUT 1 1000>;		gpio = S5K4HA_RST; 	};
-						60 { pname = MCLK_FUNC;		pin = <PIN_FUNCTION 2 500>; 					};
-						70 { pname = MCLK_GPIO;		pin = <PIN_MCLK 1 0>; 						};
-						80 { pname = I2C_ON;		pin = <PIN_I2C 1 4000>; 					};
-					};
-
-					scenario_read_rom_off {
-						sensor_scenario = <SENSOR_SCENARIO_READ_ROM>;
-						gpio_scenario = <GPIO_SCENARIO_OFF>;
-
-						10 { pname = DELAY; 		pin = <PIN_NONE 0 500>; 					};
-						20 { pname = I2C_OFF; 		pin = <PIN_I2C 0 1000>; 						};
-						30 { pname = MCLK_GPIO; 	pin = <PIN_MCLK 0 500>; 					};
-						40 { pname = MCLK_FUNC; 	pin = <PIN_FUNCTION 1 500>; 					};
-						50 { pname = MCLK_FUNC; 	pin = <PIN_FUNCTION 0 0>; 					};
-						60 { pname = SEN_RST_LOW; 	pin = <PIN_OUTPUT 0 1000>; 			gpio = S5K4HA_RST; 	};
-						70 { pname = "s5k4ha_iovdd"; 	pin = <PIN_OUTPUT 0 0>; 		gpio = S5K4HA_IOVDD;	}; /* CAM_VDDIO_1P8 */
-						80 { pname = "s5k4ha_dvdd"; 	pin = <PIN_OUTPUT 0 0>; 		gpio = S5K4HA_DVDD;	}; /* RCAM3_DVDD_1P2 */
-						90 { pname = "s5k4ha_avdd"; 	pin = <PIN_OUTPUT 0 1000>; 	gpio = S5K4HA_AVDD;	}; /* RCAM3_AVDD_2P8 */
-						/* 40 ms low time for IO before EEPROM/OTPROM read */
-						100 { pname = DELAY;			pin = <PIN_NONE 0 40000>;							};
-					};
-				}; /* power_seq */
-			}; /* is_sensor_4ha */
 
 			/* REAR SUB CAMERA */
 			is_sensor_gc02m1: is_sensor_gc02m1@6E {
