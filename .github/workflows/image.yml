@@ -210,7 +210,7 @@ jobs:
         run: |
           set -euo pipefail
           IMG="$(find out -name Image | head -1)"
-          DTB="$(find dtbs -name exynos3830.dtb | head -1)"
+          DTB="prebuilt/a12s-boot-dtb.img"
           test -s "$IMG"; test -s "$DTB"; test -s "$RAMDISK"
           echo "kernel=$IMG dtb=$DTB ramdisk=$RAMDISK"
           python3 tools-mkbootimg/mkbootimg.py \
