@@ -18,7 +18,10 @@ fw-external-$(CONFIG_SENSORS_SSP_A21S) += sensorhub/a21s_bring_up.bin
 fw-external-$(CONFIG_TOUCHSCREEN_SYNAPTICS_TCM) += tsp_synaptics/td4375_a12s_boe.bin tsp_synaptics/td4150_a12s_boe.bin tsp_synaptics/td4160_a12s_boe.bin
 
 fw-external-$(CONFIG_TOUCHSCREEN_HIMAX_CHIPSET) += tsp_himax/hx83112a_a21s.bin
-fw-external-$(CONFIG_TOUCHSCREEN_NT36xxx_HOSTDL_SPI) += tsp_novatek/nt36675_a21s_csot.bin tsp_novatek/nt36675_a21s_mp_csot.bin
+fw-external-$(CONFIG_TOUCHSCREEN_ILITEK_ILI9881X) += tsp_ilitek/ili7807s_a12s.hex tsp_ilitek/ili9882_a12s.hex
+fw-external-$(CONFIG_TOUCHSCREEN_NT36xxx_HOSTDL_SPI) += tsp_novatek/nt36525_a12s_csot.bin tsp_novatek/nt36525_a12s_mp_csot.bin \
+										tsp_novatek/nt36525_a12s_dtc.bin tsp_novatek/nt36525_a12s_mp_dtc.bin \
+										tsp_novatek/nt36525_a12s_sharp.bin tsp_novatek/nt36525_a12s_mp_sharp.bin
 
 quiet_cmd_ihex  = IHEX    $@
       cmd_ihex  = $(OBJCOPY) -Iihex -Obinary $< $@

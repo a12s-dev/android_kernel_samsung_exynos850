@@ -1,0 +1,240 @@
+name: Build a12s kernel
+
+on:
+  push:
+    branches: [a12s-los-camera, a12s-los-perf, a12s-rom40]
+    tags: ["v*"]
+    paths-ignore: ["**.md", "docs/**", ".github/dependabot.yml"]
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+    inputs:
+      cmdline:
+        description: Kernel cmdline baked into boot.img
+        default: androidboot.selinux=permissive
+        type: string
+
+# One run per ref; newer pushes cancel stale builds (never cancel tag/release builds).
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions: {}
+
+env:
+  CLANG_VER: clang-r383902
+  CLANG_REF: refs/heads/android-exynos-r11-4.19-android15-qpr2
+  BOOT_PARTITION_SIZE: "46137344"
+  RAMDISK: prebuilt/a12s-ramdisk.img
+  # Samsung-wrapped base dtb (d7b7ab1e header + exynos3830 FDT). The bootloader
+  # rejects a raw FDT in the header-v2 dtb field.
+  BOOT_DTB: prebuilt/a12s-boot-dtb.img
+  PRIMARY_DEFCONFIG: exynos850-a12snsxx_defconfig
+  KMAKE_ARGS: >-
+    ARCH=arm64
+    CROSS_COMPILE=aarch64-linux-android-
+    CROSS_COMPILE_COMPAT=arm-linux-androideabi-
+    CLANG_TRIPLE=aarch64-linux-gnu-
+    LD=ld.lld NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
+    KBUILD_BUILD_USER=github-actions KBUILD_BUILD_HOST=ci
+
+jobs:
+  build:
+    name: Kernel (${{ matrix.defconfig }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - defconfig: exynos850-a12snsxx_defconfig
+            primary: true
+          - defconfig: a12s_defconfig
+            primary: false
+    # Only the primary defconfig gates the boot.img; the other is informational.
+    continue-on-error: ${{ !matrix.primary }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          clang-ver: ${{ env.CLANG_VER }}
+          clang-ref: ${{ env.CLANG_REF }}
+          ccache-key: ${{ matrix.defconfig }}
+
+      - name: Configure
+        env:
+          DEFCONFIG: ${{ matrix.defconfig }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086
+          make $KMAKE_ARGS "$DEFCONFIG" olddefconfig
+          echo "::group::touch firmware configs"
+          grep -E '^CONFIG_TOUCHSCREEN_(SYNAPTICS_TCM|NT36xxx_HOSTDL_SPI|ILITEK_ILI9881X)' .config || true
+          echo "::endgroup::"
+          grep -q '^CONFIG_EXTRA_FIRMWARE=' .config \
+            && echo "::notice::EXTRA_FIRMWARE present" \
+            || echo "::warning::CONFIG_EXTRA_FIRMWARE missing; touch firmware won't be embedded"
+
+      - name: Build Image + DTB + DTBOs
+        run: |
+          set -euo pipefail
+          export KBUILD_BUILD_TIMESTAMP="$(git log -1 --format=%cd)"
+          ccache -z
+          # shellcheck disable=SC2086
+          make $KMAKE_ARGS CC="ccache clang" -j"$(nproc)" \
+            Image \
+            exynos/exynos3830.dtb \
+            samsung/a12s/exynos850-a12s_w00_r00.dtbo \
+            samsung/a12s/exynos850-a12s_w00_r01.dtbo 2>&1 | tee build.log
+          test -s arch/arm64/boot/Image
+          test -s arch/arm64/boot/dts/exynos/exynos3830.dtb
+          test -s arch/arm64/boot/dts/samsung/a12s/exynos850-a12s_w00_r00.dtbo
+          test -s arch/arm64/boot/dts/samsung/a12s/exynos850-a12s_w00_r01.dtbo
+
+      - name: Annotate errors
+        if: failure()
+        run: |
+          grep -E 'error:|undefined reference|No rule to make target' build.log | head -20 \
+            | while IFS= read -r l; do echo "::error::${l}"; done || true
+
+      - name: Summary
+        if: always()
+        env:
+          DEFCONFIG: ${{ matrix.defconfig }}
+        run: |
+          {
+            echo "### Kernel \`$DEFCONFIG\`"
+            echo
+            echo "| | |"
+            echo "|-|-|"
+            echo "| Commit | \`${GITHUB_SHA::10}\` |"
+            echo "| Clang | $(clang --version | head -1) |"
+            [ -f arch/arm64/boot/Image ] && echo "| Image | $(stat -c%s arch/arm64/boot/Image) bytes |"
+            echo
+            echo '```'; ccache -s 2>/dev/null | head -12; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ matrix.defconfig }}
+          path: |
+            arch/arm64/boot/Image
+            arch/arm64/boot/dts/exynos/exynos3830.dtb
+            arch/arm64/boot/dts/samsung/a12s/*.dtbo
+            .config
+            build.log
+          retention-days: 14
+          if-no-files-found: warn
+
+  bootimg:
+    name: Flashable boot.img
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write       # build provenance
+      attestations: write   # build provenance
+    steps:
+      - uses: actions/checkout@v4   # for the prebuilt ramdisk and dtb
+        with:
+          fetch-depth: 1
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kernel-${{ env.PRIMARY_DEFCONFIG }}
+          path: out
+
+      - name: Fetch mkbootimg and avbtool
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://android.googlesource.com/platform/system/tools/mkbootimg tools-mkbootimg
+          git clone --depth 1 https://android.googlesource.com/platform/external/avb tools-avb
+
+      - name: Assemble boot.img
+        env:
+          CMDLINE: ${{ inputs.cmdline || 'androidboot.selinux=permissive' }}
+        run: |
+          set -euo pipefail
+          IMG="$(find out -name Image | head -1)"
+          DTB="$BOOT_DTB"
+          test -s "$IMG"; test -s "$DTB"; test -s "$RAMDISK"
+          # sanity: the Samsung dtb container starts with the d7b7ab1e magic, FDT at 0x40
+          python3 -c "import sys;d=open('$DTB','rb').read();assert d[:4]==bytes.fromhex('d7b7ab1e'), 'dtb is not the Samsung container';assert d[0x40:0x44]==bytes.fromhex('d00dfeed'),'FDT missing at 0x40'"
+          python3 tools-mkbootimg/mkbootimg.py \
+            --kernel "$IMG" --ramdisk "$RAMDISK" --dtb "$DTB" \
+            --header_version 2 \
+            --base 0x10000000 --kernel_offset 0x00008000 \
+            --ramdisk_offset 0x01000000 --tags_offset 0x00000100 \
+            --dtb_offset 0x00000000 --pagesize 2048 \
+            --os_version 16.0.0 --os_patch_level "$(date -u +%Y-%m)" \
+            --cmdline "$CMDLINE" \
+            --output boot.img
+
+      - name: Add AVB hash footer
+        run: |
+          set -euo pipefail
+          size=$(stat -c%s boot.img)
+          [ "$size" -lt "$BOOT_PARTITION_SIZE" ] || { echo "::error::boot.img ($size) exceeds partition ($BOOT_PARTITION_SIZE)"; exit 1; }
+          AVBTOOL="$(find tools-avb -maxdepth 1 -name 'avbtool*' -type f | head -1)"
+          python3 "$AVBTOOL" add_hash_footer --image boot.img \
+            --partition_size "$BOOT_PARTITION_SIZE" --partition_name boot --hash_algorithm sha256
+          python3 "$AVBTOOL" info_image --image boot.img | tee avb-info.txt
+
+      - name: Verify boot.img
+        env:
+          CMDLINE: ${{ inputs.cmdline || 'androidboot.selinux=permissive' }}
+        run: |
+          set -euo pipefail
+          python3 tools-mkbootimg/unpack_bootimg.py --boot_img boot.img | tee unpack.txt
+          grep -q 'boot image header version: 2' unpack.txt
+          grep -qF "command line args: $CMDLINE" unpack.txt
+          sha256sum boot.img | tee boot.img.sha256
+          {
+            echo "### boot.img"
+            echo '```'; cat boot.img.sha256; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attest provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: boot.img
+
+      - name: Upload flashable boot.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: a12s-boot
+          path: |
+            boot.img
+            boot.img.sha256
+            unpack.txt
+            avb-info.txt
+          retention-days: 30
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: bootimg
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: a12s-boot
+          path: release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/boot.img
+            release/boot.img.sha256
+          generate_release_notes: true

@@ -773,3 +773,6 @@ CONFIG_SBD_BOOTLOG=y
 
 # Match the a21s baseline (avoids the clang-13+ auto-var-init enabler flag)
 CONFIG_INIT_STACK_NONE=y
+
+CONFIG_LOCALVERSION="-varifocal-g12d74de22978"
+# CONFIG_LOCALVERSION_AUTO is not set
