@@ -1,0 +1,68 @@
+name: Setup kernel toolchain
+description: Cached Clang + GCC 4.9 prebuilts, build deps, ccache.
+
+inputs:
+  clang-ver:
+    description: Clang directory name
+    required: true
+  clang-ref:
+    description: AOSP clang prebuilts ref
+    required: true
+  ccache-key:
+    description: Unique ccache key prefix (e.g. per defconfig)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Cache toolchain
+      id: cache-tc
+      uses: actions/cache@v4
+      with:
+        path: ~/tc
+        key: tc-${{ inputs.clang-ver }}-${{ inputs.clang-ref }}-${{ hashFiles('.github/actions/setup-toolchain/action.yml') }}
+
+    - name: Download toolchains
+      if: steps.cache-tc.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        CLANG_VER: ${{ inputs.clang-ver }}
+        CLANG_REF: ${{ inputs.clang-ref }}
+      run: |
+        set -euo pipefail
+        base=https://android.googlesource.com/platform/prebuilts
+        gcc_ref=refs/heads/android-msm-barbet-4.19-android12L
+        mkdir -p "$HOME/tc" && cd "$HOME/tc"
+        fetch() { # url dir
+          curl -fL --retry 5 --retry-all-errors -o "$2.tgz" "$1"
+          mkdir -p "$2" && tar -xzf "$2.tgz" -C "$2" && rm -f "$2.tgz"
+        }
+        fetch "$base/clang/host/linux-x86/+archive/${CLANG_REF}/${CLANG_VER}.tar.gz" clang
+        fetch "$base/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/${gcc_ref}.tar.gz" gcc64
+        fetch "$base/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/${gcc_ref}.tar.gz" gcc32
+        du -sh "$HOME/tc"/*
+
+    - name: Install deps + export PATH
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          bc bison flex libssl-dev libelf-dev rsync ccache
+        echo "$HOME/tc/clang/bin"  >> "$GITHUB_PATH"
+        echo "$HOME/tc/gcc64/bin"  >> "$GITHUB_PATH"
+        echo "$HOME/tc/gcc32/bin"  >> "$GITHUB_PATH"
+        {
+          echo "CCACHE_DIR=$HOME/.ccache"
+          echo "CCACHE_MAXSIZE=2G"
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+          echo "CCACHE_COMPILERCHECK=content"
+          echo "CCACHE_NOHASHDIR=true"
+        } >> "$GITHUB_ENV"
+
+    - name: Restore ccache
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ccache-${{ inputs.ccache-key }}-${{ github.sha }}
+        restore-keys: ccache-${{ inputs.ccache-key }}-
