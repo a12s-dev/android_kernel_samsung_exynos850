@@ -12,9 +12,12 @@ env:
   ARCH: arm64
   CLANG_VER: clang-r383902
   CLANG_REF: refs/heads/android-exynos-r11-4.19-android15-qpr2
+  BOOT_PARTITION_SIZE: "46137344"
+  RAMDISK: prebuilt/a12s-ramdisk.img
 
 jobs:
-  build:
+  image:
+    name: Image (${{ matrix.defconfig }})
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -81,8 +84,66 @@ jobs:
             -j"$(nproc)" Image 2>&1 | tee build.log
           ls -la arch/arm64/boot/Image
 
+      - name: Upload Image
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-image-${{ matrix.defconfig }}
+          path: |
+            arch/arm64/boot/Image
+            .config
+            build.log
+          if-no-files-found: warn
+
+  dtbs:
+    name: DTBs + DTBOs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Cache toolchain
+        id: cache-tc
+        uses: actions/cache@v4
+        with:
+          path: ~/tc
+          key: tc-${{ env.CLANG_VER }}-gcc49-v1
+
+      - name: Download toolchains
+        if: steps.cache-tc.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/tc"
+          cd "$HOME/tc"
+          curl -fL --retry 3 -o clang.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/${CLANG_REF}/${CLANG_VER}.tar.gz"
+          mkdir -p clang && tar -xzf clang.tar.gz -C clang && rm -f clang.tar.gz
+          curl -fL --retry 3 -o gcc64.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android-msm-barbet-4.19-android12L.tar.gz"
+          mkdir -p gcc64 && tar -xzf gcc64.tar.gz -C gcc64 && rm -f gcc64.tar.gz
+          curl -fL --retry 3 -o gcc32.tar.gz \
+            "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/heads/android-msm-barbet-4.19-android12L.tar.gz"
+          mkdir -p gcc32 && tar -xzf gcc32.tar.gz -C gcc32 && rm -f gcc32.tar.gz
+          du -sh "$HOME/tc"
+
+      - name: Install deps
+        run: |
+          for p in bc bison flex libssl-dev libelf-dev rsync; do
+            dpkg -s "$p" >/dev/null 2>&1 || { sudo apt-get update -qq; sudo apt-get install -y "$p"; }
+          done
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/tc/clang/bin:$HOME/tc/gcc64/bin:$HOME/tc/gcc32/bin:$PATH"
+          make ARCH=arm64 exynos850-a12snsxx_defconfig
+          make ARCH=arm64 olddefconfig
+
       - name: Build DTBs and DTBOs
-        if: matrix.defconfig == 'exynos850-a12snsxx_defconfig'
         run: |
           set -euo pipefail
           export PATH="$HOME/tc/clang/bin:$HOME/tc/gcc64/bin:$HOME/tc/gcc32/bin:$PATH"
@@ -102,22 +163,101 @@ jobs:
           test -s arch/arm64/boot/dts/samsung/a12s/exynos850-a12s_w00_r00.dtbo
           test -s arch/arm64/boot/dts/samsung/a12s/exynos850-a12s_w00_r01.dtbo
 
-      - name: Check touch firmware embedded
-        run: |
-          echo "=== firmware build objects ==="
-          find firmware -name '*.gen.o' 2>/dev/null | sort
-          echo "=== novatek/ilitek symbols in Image ==="
-          grep -aoE 'tsp_(novatek|ilitek|synaptics)/[a-z0-9_]+\.(bin|hex)' arch/arm64/boot/Image | sort -u || true
-
-      - name: Upload artifact
+      - name: Upload DTBs/DTBOs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: a12s-kernel-${{ matrix.defconfig }}
+          name: kernel-dtbs
           path: |
-            arch/arm64/boot/Image
             arch/arm64/boot/dts/exynos/exynos3830.dtb
             arch/arm64/boot/dts/samsung/a12s/*.dtbo
-            .config
-            build.log
+            dtbo.log
+          if-no-files-found: warn
+
+  bootimg:
+    name: Flashable boot.img
+    needs: [image, dtbs]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout (for the ramdisk)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Download Image
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-image-exynos850-a12snsxx_defconfig
+          path: out
+
+      - name: Download DTBs
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-dtbs
+          path: dtbs
+
+      - name: Fetch mkbootimg and avbtool
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://android.googlesource.com/platform/system/tools/mkbootimg tools-mkbootimg
+          git clone --depth 1 https://android.googlesource.com/platform/external/avb tools-avb
+          ls -la tools-mkbootimg/mkbootimg.py
+          ls -la tools-avb/avbtool*
+
+      - name: Assemble boot.img
+        run: |
+          set -euo pipefail
+          IMG="$(find out -name Image | head -1)"
+          DTB="$(find dtbs -name exynos3830.dtb | head -1)"
+          test -s "$IMG"; test -s "$DTB"; test -s "$RAMDISK"
+          echo "kernel=$IMG dtb=$DTB ramdisk=$RAMDISK"
+          python3 tools-mkbootimg/mkbootimg.py \
+            --kernel "$IMG" \
+            --ramdisk "$RAMDISK" \
+            --dtb "$DTB" \
+            --header_version 2 \
+            --base 0x10000000 \
+            --kernel_offset 0x00008000 \
+            --ramdisk_offset 0x01000000 \
+            --tags_offset 0x00000100 \
+            --dtb_offset 0x00000000 \
+            --pagesize 2048 \
+            --os_version 16.0.0 \
+            --os_patch_level 2026-11 \
+            --cmdline "androidboot.selinux=permissive" \
+            --output boot.img
+          ls -la boot.img
+
+      - name: Sign with unsigned AVB hash footer
+        run: |
+          set -euo pipefail
+          AVBTOOL="$(find tools-avb -maxdepth 1 -name 'avbtool*' -type f | head -1)"
+          echo "avbtool=$AVBTOOL"
+          python3 "$AVBTOOL" add_hash_footer \
+            --image boot.img \
+            --partition_size "${BOOT_PARTITION_SIZE}" \
+            --partition_name boot \
+            --hash_algorithm sha256 \
+            --os_version 16.0.0 \
+            --os_patch_level 2026-11
+          ls -la boot.img
+
+      - name: Verify boot.img
+        run: |
+          set -euo pipefail
+          python3 tools-mkbootimg/unpack_bootimg.py --boot_img boot.img | tee unpack.txt
+          grep -q 'boot image header version: 2' unpack.txt
+          grep -q 'command line args: androidboot.selinux=permissive' unpack.txt
+          sha256sum boot.img
+
+      - name: Upload flashable boot.img
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a12s-boot
+          path: |
+            boot.img
+            unpack.txt
           if-no-files-found: warn
