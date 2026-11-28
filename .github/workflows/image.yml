@@ -1,4 +1,4 @@
-name: Build a12s kernel Image
+name: Build a12s kernel
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -81,6 +81,27 @@ jobs:
             -j"$(nproc)" Image 2>&1 | tee build.log
           ls -la arch/arm64/boot/Image
 
+      - name: Build DTBs and DTBOs
+        if: matrix.defconfig == 'exynos850-a12snsxx_defconfig'
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/tc/clang/bin:$HOME/tc/gcc64/bin:$HOME/tc/gcc32/bin:$PATH"
+          make ARCH=arm64 \
+            CC="clang" \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_COMPAT=arm-linux-androideabi- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            LD=ld.lld NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
+            -j"$(nproc)" \
+            exynos/exynos3830.dtb \
+            samsung/a12s/exynos850-a12s_w00_r00.dtbo \
+            samsung/a12s/exynos850-a12s_w00_r01.dtbo 2>&1 | tee dtbo.log
+          ls -la arch/arm64/boot/dts/exynos/exynos3830.dtb
+          ls -la arch/arm64/boot/dts/samsung/a12s/*.dtbo
+          test -s arch/arm64/boot/dts/exynos/exynos3830.dtb
+          test -s arch/arm64/boot/dts/samsung/a12s/exynos850-a12s_w00_r00.dtbo
+          test -s arch/arm64/boot/dts/samsung/a12s/exynos850-a12s_w00_r01.dtbo
+
       - name: Check touch firmware embedded
         run: |
           echo "=== firmware build objects ==="
@@ -92,9 +113,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: a12s-Image-${{ matrix.defconfig }}
+          name: a12s-kernel-${{ matrix.defconfig }}
           path: |
             arch/arm64/boot/Image
+            arch/arm64/boot/dts/exynos/exynos3830.dtb
+            arch/arm64/boot/dts/samsung/a12s/*.dtbo
             .config
             build.log
           if-no-files-found: warn
